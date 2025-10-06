@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expense Manager</title>
+    <style>
+        /* --- Google Fonts & Root Variables --- */
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+        :root {
+            --gemini-dark-blue: #131314;
+            --gemini-blue: #4285F4;
+            --gemini-teal: #34A853;
+            --gemini-purple: #8950DC;
+            --gemini-light-gray: #F1F3F4;
+            --gemini-gray: #5F6368;
+            --gemini-white: #FFFFFF;
+            --danger-red: #EA4335;
+            --card-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            --border-radius: 12px;
+        }
+
+        /* --- General Body & Layout --- */
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: var(--gemini-light-gray);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: var(--gemini-dark-blue);
+            transition: background-color 0.3s;
+        }
+
+        /* --- Header --- */
+        header {
+            width: 100%;
+            background-color: var(--gemini-white);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            padding: 15px 5%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-sizing: border-box;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 1.5em;
+            font-weight: 600;
+            color: var(--gemini-dark-blue);
+        }
+
+        .logo svg {
+            width: 32px;
+            height: 32px;
+        }
+
+        nav button {
+            background: none;
+            border: none;
+            font-family: 'Poppins', sans-serif;
+            font-size: 1em;
+            font-weight: 500;
+            color: var(--gemini-gray);
+            cursor: pointer;
+            padding: 8px 16px;
+            border-radius: 8px;
+            transition: background-color 0.2s, color 0.2s;
+        }
+
+        nav button:hover, nav button.active {
+            background-color: #e8f0fe;
+            color: var(--gemini-blue);
+        }
+        
+        #logoutButton {
+            color: var(--danger-red);
+        }
+
+        #logoutButton:hover {
+            background-color: #fce8e6;
+        }
+
+        /* --- Main Content --- */
+        main {
+            width: 100%;
+            max-width: 1200px;
+            padding: 40px 20px;
+            box-sizing: border-box;
+        }
+
+        .view-section {
+            display: none; /* Hidden by default */
+        }
+        
+        .view-section.active {
+            display: block; /* Shown when active */
+        }
+
+        /* --- Card Styling --- */
+        .card {
+            background-color: var(--gemini-white);
+            border-radius: var(--border-radius);
+            box-shadow: var(--card-shadow);
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+        
+        .card h2 {
+            margin-top: 0;
+            font-size: 1.8em;
+            font-weight: 600;
+            color: var(--gemini-dark-blue);
+            border-bottom: 1px solid var(--gemini-light-gray);
+            padding-bottom: 15px;
+            margin-bottom: 25px;
+        }
+
+        /* --- Forms & Inputs --- */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 8px;
+            color: var(--gemini-gray);
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid #DADCE0;
+            border-radius: 8px;
+            font-size: 1em;
+            box-sizing: border-box;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--gemini-blue);
+            box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.2);
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 25px;
+        }
+
+        .btn {
+            padding: 12px 25px;
+            font-size: 1em;
+            font-weight: 600;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        .btn-primary {
+            background-color: var(--gemini-blue);
+            color: var(--gemini-white);
+        }
+
+        .btn-secondary {
+            background-color: var(--gemini-light-gray);
+            color: var(--gemini-dark-blue);
+        }
+        
+        /* --- PDF Upload Section --- */
+        .upload-area {
+            border: 2px dashed #DADCE0;
+            border-radius: var(--border-radius);
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            background-color: #fafafa;
+            transition: border-color 0.2s, background-color 0.2s;
+        }
+
+        .upload-area:hover {
+            border-color: var(--gemini-blue);
+            background-color: #f5f8ff;
+        }
+        
+        .upload-area p {
+            margin: 0;
+            color: var(--gemini-gray);
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        /* --- Transaction Preview Table --- */
+        .preview-container {
+            margin-top: 30px;
+        }
+
+        .preview-container h3 {
+            font-weight: 500;
+            margin-bottom: 15px;
+        }
+
+        .transaction-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .transaction-table th, .transaction-table td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid var(--gemini-light-gray);
+        }
+
+        .transaction-table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+        }
+        
+        .transaction-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* --- Analytics Dashboard Section --- */
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+
+        .metric-card {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: var(--border-radius);
+            border: 1px solid #e0e0e0;
+        }
+        
+        .metric-card h4 {
+            margin: 0 0 10px 0;
+            color: var(--gemini-gray);
+            font-weight: 500;
+        }
+        
+        .metric-value {
+            font-size: 2em;
+            font-weight: 600;
+            margin: 0;
+        }
+        
+        .metric-change {
+            font-size: 1em;
+            font-weight: 500;
+        }
+
+        .increase { color: var(--danger-red); }
+        .decrease { color: var(--gemini-teal); }
+
+        /* --- Hide/Show Auth States --- */
+        .logged-out-view #userDashboard, .logged-out-view #navLinks {
+            display: none;
+        }
+        
+        .logged-in-view #authSection {
+            display: none;
+        }
+        
+        /* Initial state: logged out */
+        body {
+            /* Starts in logged-out state */
+            --auth-display: block;
+            --dashboard-display: none;
+        }
+        
+        #authSection { display: var(--auth-display); }
+        #userDashboard { display: var(--dashboard-display); }
+        #navLinks { display: var(--dashboard-display); }
+        
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20Z" fill="#4285F4"/>
+                <path d="M12 6C8.69 6 6 8.69 6 12H8C8 9.79 9.79 8 12 8C14.21 8 16 9.79 16 12H18C18 8.69 15.31 6 12 6Z" fill="#34A853"/>
+            </svg>
+            <span>Expense Manager</span>
+        </div>
+        <nav id="navLinks" style="display: none;">
+            <button id="dashboardBtn" class="active">Dashboard</button>
+            <button id="uploadBtn">Upload</button>
+            <button id="logoutButton">Logout</button>
+        </nav>
+    </header>
+
+    <main>
+        
+        <section id="authSection" class="view-section active">
+            <div class="card" style="max-width: 450px; margin: auto;">
+                <h2>Welcome</h2>
+                <div class="form-group">
+                    <label for="email">Email Address</label>
+                    <input type="email" id="email" class="form-input" placeholder="you@example.com">
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" class="form-input" placeholder="••••••••">
+                </div>
+                <div class="button-group">
+                    <button id="loginBtn" class="btn btn-primary">Login</button>
+                    <button class="btn btn-secondary">Register</button>
+                </div>
+            </div>
+        </section>
+
+        <div id="userDashboard" style="display: none;">
+            
+            <section id="dashboardView" class="view-section active">
+                <div class="card">
+                    <h2>Monthly Analytics</h2>
+                    <div class="analytics-grid">
+                        <div class="metric-card">
+                            <h4>Total Spending (This Month)</h4>
+                            <p class="metric-value">$2,450.75</p>
+                            <p class="metric-change increase">▲ 15.2% vs. Last Month</p>
+                        </div>
+                        <div class="metric-card">
+                            <h4>Groceries</h4>
+                            <p class="metric-value">$580.10</p>
+                            <p class="metric-change decrease">▼ 5.8% vs. Last Month</p>
+                        </div>
+                        <div class="metric-card">
+                            <h4>Utilities</h4>
+                            <p class="metric-value">$215.50</p>
+                            <p class="metric-change increase">▲ 2.1% vs. Last Month</p>
+                        </div>
+                        <div class="metric-card">
+                            <h4>Entertainment</h4>
+                            <p class="metric-value">$350.00</p>
+                            <p class="metric-change increase">▲ 25.0% vs. Last Month</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <section id="uploadView" class="view-section">
+                <div class="card">
+                    <h2>Upload New Statement</h2>
+                    <label for="file-input" class="upload-area">
+                        <p><strong>Click to browse</strong> or drag and drop your PDF statement here.</p>
+                        <p id="file-name" style="color: var(--gemini-blue); margin-top: 10px;"></p>
+                    </label>
+                    <input type="file" id="file-input" accept=".pdf">
+
+                    <div class="preview-container" id="preview-section" style="display: none;">
+                        <h3>Transaction Preview</h3>
+                        <table class="transaction-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Description</th>
+                                    <th>Category</th>
+                                    <th>Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>2025-09-28</td>
+                                    <td>SUPERMARKET CHECKOUT</td>
+                                    <td>Groceries</td>
+                                    <td>$75.40</td>
+                                </tr>
+                                <tr>
+                                    <td>2025-09-27</td>
+                                    <td>AMAZON PRIME VIDEO</td>
+                                    <td>Entertainment</td>
+                                    <td>$14.99</td>
+                                </tr>
+                                <tr>
+                                    <td>2025-09-26</td>
+                                    <td>HYDRO OTTAWA</td>
+                                    <td>Utilities</td>
+                                    <td>$88.12</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <div class="button-group">
+                            <button class="btn btn-primary">Register Transactions</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // --- DOM Elements ---
+            const authSection = document.getElementById('authSection');
+            const userDashboard = document.getElementById('userDashboard');
+            const navLinks = document.getElementById('navLinks');
+
+            const loginBtn = document.getElementById('loginBtn');
+            const logoutButton = document.getElementById('logoutButton');
+            
+            const dashboardBtn = document.getElementById('dashboardBtn');
+            const uploadBtn = document.getElementById('uploadBtn');
+
+            const dashboardView = document.getElementById('dashboardView');
+            const uploadView = document.getElementById('uploadView');
+
+            const fileInput = document.getElementById('file-input');
+            const fileNameDisplay = document.getElementById('file-name');
+            const previewSection = document.getElementById('preview-section');
+
+            // --- View Switching Logic ---
+            function showView(viewToShow) {
+                // Hide all views first
+                [dashboardView, uploadView].forEach(view => view.classList.remove('active'));
+                // Show the selected view
+                viewToShow.classList.add('active');
+                
+                // Update active button state
+                [dashboardBtn, uploadBtn].forEach(btn => btn.classList.remove('active'));
+                if (viewToShow === dashboardView) {
+                    dashboardBtn.classList.add('active');
+                } else if (viewToShow === uploadView) {
+                    uploadBtn.classList.add('active');
+                }
+            }
+
+            // --- Event Listeners ---
+            dashboardBtn.addEventListener('click', () => showView(dashboardView));
+            uploadBtn.addEventListener('click', () => showView(uploadView));
+
+            // --- Authentication Simulation ---
+            loginBtn.addEventListener('click', () => {
+                // Hide auth section and show main app
+                authSection.style.display = 'none';
+                userDashboard.style.display = 'block';
+                navLinks.style.display = 'flex';
+                showView(dashboardView); // Default to dashboard view on login
+            });
+
+            logoutButton.addEventListener('click', () => {
+                // Hide main app and show auth section
+                authSection.style.display = 'block';
+                userDashboard.style.display = 'none';
+                navLinks.style.display = 'none';
+            });
+            
+            // --- File Upload Logic ---
+            fileInput.addEventListener('change', (event) => {
+                if (event.target.files.length > 0) {
+                    const file = event.target.files[0];
+                    fileNameDisplay.textContent = `Selected file: ${file.name}`;
+                    // Show the preview section once a file is selected
+                    previewSection.style.display = 'block';
+                } else {
+                    fileNameDisplay.textContent = '';
+                    previewSection.style.display = 'none';
+                }
+            });
+            
+            // --- Initial State ---
+            // On load, ensure only the login screen is visible
+            showView(dashboardView); // Set an initial view for the logged-in state
+        });
+    </script>
+</body>
+</html>

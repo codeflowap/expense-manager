@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Expense Manager</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+        :root {
+            --gemini-dark-blue: #131314;
+            --gemini-blue: #4285F4;
+            --gemini-teal: #34A853;
+            --gemini-light-gray: #F1F3F4;
+            --gemini-gray: #5F6368;
+            --gemini-white: #FFFFFF;
+            --danger-red: #EA4335;
+            --card-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            --border-radius: 12px;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: var(--gemini-light-gray);
+            margin: 0;
+            padding: 0;
+            color: var(--gemini-dark-blue);
+        }
+
+        /* Header */
+        header {
+            width: 100%;
+            background-color: var(--gemini-white);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            padding: 15px 5%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .logo { display: flex; align-items: center; gap: 12px; font-size: 1.5em; font-weight: 600; }
+        .logo svg { width: 32px; height: 32px; }
+
+        .header-right { display: flex; align-items: center; gap: 20px; }
+
+        .inbox-icon-container {
+            position: relative;
+            cursor: pointer;
+            padding: 8px;
+        }
+
+        .inbox-icon-container svg {
+            width: 28px;
+            height: 28px;
+            fill: var(--gemini-gray);
+        }
+
+        .notification-badge {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            background-color: var(--danger-red);
+            color: white;
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7em;
+            font-weight: 600;
+        }
+
+        .notification-badge.active { display: flex; }
+
+        .user-profile { display: flex; align-items: center; gap: 12px; }
+        .user-profile img { width: 40px; height: 40px; border-radius: 50%; }
+
+        /* Main content */
+        main { width: 100%; max-width: 900px; margin: 40px auto; padding: 0 20px; }
+
+        .page { display: none; }
+        .page.active { display: block; }
+
+        /* Card styling */
+        .card {
+            background-color: var(--gemini-white);
+            border-radius: var(--border-radius);
+            box-shadow: var(--card-shadow);
+            padding: 30px 40px;
+            margin-bottom: 30px;
+        }
+
+        .card h2 { margin-top: 0; font-size: 1.8em; }
+
+        /* Forms */
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; font-weight: 500; margin-bottom: 8px; color: var(--gemini-gray); }
+        .form-input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid #DADCE0;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.2s;
+        }
+        .form-input:focus { outline: none; border-color: var(--gemini-blue); box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.2); }
+
+        /* Buttons */
+        .btn {
+            padding: 12px 25px;
+            font-size: 1em;
+            font-weight: 600;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15); }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-primary { background-color: var(--gemini-blue); color: var(--gemini-white); }
+        .btn-secondary { background-color: var(--gemini-light-gray); color: var(--gemini-dark-blue); }
+        .btn-success { background-color: var(--gemini-teal); color: var(--gemini-white); }
+        .btn-small { padding: 8px 16px; font-size: 0.9em; }
+        .button-group { display: flex; gap: 15px; margin-top: 25px; }
+
+        /* Upload area */
+        .upload-card { text-align: center; }
+        #upload-area {
+            border: 2px dashed #DADCE0;
+            border-radius: var(--border-radius);
+            padding: 40px;
+            cursor: pointer;
+            background-color: #fafafa;
+            transition: all 0.2s;
+        }
+        #upload-area.hover { border-color: var(--gemini-blue); background-color: #f5f8ff; }
+        #file-input { display: none; }
+
+        .upload-prompt .icon { color: var(--gemini-blue); margin-bottom: 15px; }
+        .upload-status { display: none; padding-top: 20px; }
+        .status-line { display: flex; align-items: center; justify-content: center; gap: 10px; }
+
+        /* Loading */
+        .spinner { width: 24px; height: 24px; border: 3px solid rgba(66, 133, 244, 0.2); border-top-color: var(--gemini-blue); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .large-spinner { width: 80px; height: 80px; border-width: 8px; margin: 0 auto 25px; }
+
+        .loading-container { text-align: center; padding: 80px 20px; }
+        .loading-container p { font-size: 1.2em; font-weight: 500; color: var(--gemini-gray); }
+
+        /* Gmail button */
+        .gmail-btn {
+            background-color: var(--gemini-white);
+            color: var(--gemini-gray);
+            border: 1px solid #DADCE0;
+            padding: 12px 24px;
+            font-size: 1em;
+            font-weight: 600;
+            border-radius: 24px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .gmail-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); }
+        .gmail-icon { width: 24px; height: 24px; }
+
+        /* Inbox table */
+        .inbox-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        .inbox-table th, .inbox-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--gemini-light-gray);
+        }
+        .inbox-table th { background-color: #f8f9fa; font-weight: 600; }
+        .inbox-table tr:hover { background-color: #f8f9fa; }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+        .status-processed { background-color: #E8F5E9; color: var(--gemini-teal); }
+        .status-pending { background-color: #FFF3E0; color: #F57C00; }
+
+        .back-btn {
+            background: none;
+            border: none;
+            color: var(--gemini-blue);
+            font-size: 1em;
+            font-weight: 500;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 0;
+            margin-bottom: 20px;
+        }
+        .back-btn:hover { text-decoration: underline; }
+
+        /* Results */
+        .results-container {
+            background-color: var(--gemini-white);
+            border-radius: var(--border-radius);
+            box-shadow: var(--card-shadow);
+            padding: 30px 40px;
+        }
+        .results-container h2 { margin-top: 0; color: var(--gemini-dark-blue); }
+        .results-container h3 { color: var(--gemini-blue); border-bottom: 1px solid var(--gemini-light-gray); padding-bottom: 8px; }
+        .results-container ul { padding-left: 20px; }
+        .results-container li { margin-bottom: 10px; }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo">
+            <svg viewBox="0 0 24 24" fill="none">
+                <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20Z" fill="#4285F4"/>
+                <path d="M12 6C8.69 6 6 8.69 6 12H8C8 9.79 9.79 8 12 8C14.21 8 16 9.79 16 12H18C18 8.69 15.31 6 12 6Z" fill="#34A853"/>
+            </svg>
+            <span>Expense Manager</span>
+        </div>
+        <div class="header-right">
+            <div class="inbox-icon-container hidden" id="inboxIcon">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19 3H4.99c-1.11 0-1.98.89-1.98 2L3 19c0 1.11.88 2 1.99 2H19c1.1 0 2-.9 2-2V5c0-1.11-.9-2-2-2zm0 12h-4c0 1.66-1.35 3-3 3s-3-1.34-3-3H4.99V5H19v10z"/>
+                </svg>
+                <span class="notification-badge" id="notificationBadge">0</span>
+            </div>
+            <div class="user-profile hidden" id="userProfile">
+                <img src="https://i.pravatar.cc/40" alt="User" id="userAvatar">
+                <span id="userName">User</span>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <!-- Login Page -->
+        <div id="loginPage" class="page active">
+            <div class="card" style="max-width: 450px; margin: auto;">
+                <h2>Welcome Back</h2>
+                <div class="form-group">
+                    <label for="loginEmail">Email Address</label>
+                    <input type="email" id="loginEmail" class="form-input" placeholder="you@example.com">
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">Password</label>
+                    <input type="password" id="loginPassword" class="form-input" placeholder="••••••••">
+                </div>
+                <div class="button-group">
+                    <button id="loginBtn" class="btn btn-primary">Login</button>
+                    <button id="showRegisterBtn" class="btn btn-secondary">Register</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Register Page -->
+        <div id="registerPage" class="page">
+            <div class="card" style="max-width: 450px; margin: auto;">
+                <h2>Create Account</h2>
+                <div class="form-group">
+                    <label for="registerEmail">Email Address</label>
+                    <input type="email" id="registerEmail" class="form-input" placeholder="you@example.com">
+                </div>
+                <div class="form-group">
+                    <label for="registerPassword">Password</label>
+                    <input type="password" id="registerPassword" class="form-input" placeholder="••••••••">
+                </div>
+                <div class="button-group">
+                    <button id="registerBtn" class="btn btn-primary">Register</button>
+                    <button id="showLoginBtn" class="btn btn-secondary">Back to Login</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dashboard Page -->
+        <div id="dashboardPage" class="page">
+            <section class="hero-section" style="text-align: center; margin-bottom: 40px;">
+                <h1>Unlock Insights from Your Statements</h1>
+                <p style="color: var(--gemini-gray); max-width: 700px; margin: 0 auto 30px;">Effortlessly upload your credit card statements in PDF format. Our AI will analyze your spending, categorize transactions, and provide you with a clear financial overview.</p>
+                <button class="gmail-btn" id="gmailFetchBtn">
+                    <svg class="gmail-icon" viewBox="0 0 24 24" fill="none">
+                        <path d="M22 6.5H2V17.5H22V6.5Z" fill="#D93025"/>
+                        <path d="M2 6.5L12 14L22 6.5" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span>Fetch from Gmail & Analyze</span>
+                </button>
+            </section>
+
+            <section class="upload-card card">
+                <label for="file-input" id="upload-area">
+                    <div class="upload-prompt" id="upload-prompt">
+                        <div class="icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="17 8 12 3 7 8"></polyline>
+                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                            </svg>
+                        </div>
+                        <p><strong>Click to browse</strong> or drag & drop your PDF statement here</p>
+                        <span style="color: var(--gemini-gray);">PDF only, one file at a time</span>
+                    </div>
+                    <div class="upload-status" id="upload-status">
+                        <div class="status-line" id="loading-state"><div class="spinner"></div><span>Uploading...</span></div>
+                        <div class="status-line hidden" id="success-state">
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#34A853" stroke-width="3">
+                                <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                            <span style="color: #34A853;">Upload successful!</span>
+                        </div>
+                        <p id="file-name-display" style="margin-top: 15px; font-weight: 600;"></p>
+                    </div>
+                </label>
+                <input type="file" id="file-input" accept=".pdf">
+                <button class="btn btn-primary" id="submitBtn" disabled>Submit to Analyze</button>
+            </section>
+        </div>
+
+        <!-- Loading Page -->
+        <div id="loadingPage" class="page">
+            <div class="loading-container">
+                <div class="spinner large-spinner"></div>
+                <p>Analyzing your statement... this may take a moment.</p>
+            </div>
+        </div>
+
+        <!-- Inbox Page -->
+        <div id="inboxPage" class="page">
+            <button class="back-btn" id="backFromInbox">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 12H5M12 19l-7-7 7-7"/>
+                </svg>
+                Back to Dashboard
+            </button>
+            <div class="card">
+                <h2>Inbox</h2>
+                <table class="inbox-table" id="inboxTable">
+                    <thead>
+                        <tr>
+                            <th>Filename</th>
+                            <th>Date Received</th>
+                            <th>Source</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="inboxTableBody">
+                        <!-- Populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Result Page -->
+        <div id="resultPage" class="page">
+            <button class="back-btn" id="backFromResult">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 12H5M12 19l-7-7 7-7"/>
+                </svg>
+                Back
+            </button>
+            <div class="results-container" id="resultsContainer">
+                <!-- Populated by JavaScript -->
+            </div>
+        </div>
+
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
