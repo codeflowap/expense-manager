@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
-import { initDatabase } from './db';
+import { initDatabase } from './prisma';
 import authRoutes from './routes/auth.routes';
 import documentRoutes from './routes/document.routes';
 import webhookRoutes from './routes/webhook.routes';

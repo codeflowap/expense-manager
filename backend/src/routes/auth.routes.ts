@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { supabase } from '../db';
+import { prisma } from '../prisma';
 import { hashPassword, comparePassword, generateToken } from '../auth';
 
 const router = Router();
@@ -15,11 +15,9 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
     }
 
     // Check if user already exists
-    const { data: existingUser } = await supabase
-      .from('users')
-      .select('id')
-      .eq('email', email)
-      .single();
+    const existingUser = await prisma.user.findUnique({
+      where: { email }
+    });
 
     if (existingUser) {
       res.status(409).json({ error: 'User already exists' });
@@ -28,17 +26,16 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
 
     // Hash password and create user
     const passwordHash = await hashPassword(password);
-    const { data: newUser, error } = await supabase
-      .from('users')
-      .insert([{ email, password_hash: passwordHash }])
-      .select('id, email')
-      .single();
-
-    if (error || !newUser) {
-      console.error('Database error:', error);
-      res.status(500).json({ error: 'Failed to create user' });
-      return;
-    }
+    const newUser = await prisma.user.create({
+      data: {
+        email,
+        passwordHash
+      },
+      select: {
+        id: true,
+        email: true
+      }
+    });
 
     // Generate JWT token
     const token = generateToken({ userId: newUser.id, email: newUser.email });
@@ -65,19 +62,22 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     }
 
     // Find user by email
-    const { data: user, error } = await supabase
-      .from('users')
-      .select('id, email, password_hash')
-      .eq('email', email)
-      .single();
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        passwordHash: true
+      }
+    });
 
-    if (error || !user) {
+    if (!user) {
       res.status(401).json({ error: 'Invalid credentials' });
       return;
     }
 
     // Verify password
-    const isPasswordValid = await comparePassword(password, user.password_hash);
+    const isPasswordValid = await comparePassword(password, user.passwordHash);
 
     if (!isPasswordValid) {
       res.status(401).json({ error: 'Invalid credentials' });

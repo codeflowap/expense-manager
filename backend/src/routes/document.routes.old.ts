@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { prisma } from '../prisma';
+import { supabase } from '../db';
 import { authMiddleware, AuthRequest } from '../middleware/auth.middleware';
 import { extractTextFromPDF } from '../services/pdf.service';
 import { analyzeExpenseStatement } from '../services/gemini.service';
@@ -21,18 +21,23 @@ router.post('/upload', authMiddleware, upload.single('file'), async (req: AuthRe
     const pdfData = req.file.buffer;
 
     // Save document to database
-    const document = await prisma.document.create({
-      data: {
-        userId,
+    const { data: document, error: docError } = await supabase
+      .from('documents')
+      .insert([{
+        user_id: userId,
         filename,
-        pdfData,
+        pdf_data: pdfData,
         source: 'manual',
         processed: false
-      },
-      select: {
-        id: true
-      }
-    });
+      }])
+      .select('id')
+      .single();
+
+    if (docError || !document) {
+      console.error('Error saving document:', docError);
+      res.status(500).json({ error: 'Failed to save document' });
+      return;
+    }
 
     // Extract text from PDF
     const pdfText = await extractTextFromPDF(pdfData);
@@ -40,22 +45,23 @@ router.post('/upload', authMiddleware, upload.single('file'), async (req: AuthRe
     // Analyze with Gemini
     const analysisHtml = await analyzeExpenseStatement(pdfText);
 
-    // Save analysis result and update document in a transaction
-    await prisma.$transaction([
-      prisma.analysisResult.create({
-        data: {
-          documentId: document.id,
-          llmResponseHtml: analysisHtml
-        }
-      }),
-      prisma.document.update({
-        where: { id: document.id },
-        data: {
-          processed: true,
-          processedAt: new Date()
-        }
-      })
-    ]);
+    // Save analysis result
+    const { error: resultError } = await supabase
+      .from('analysis_results')
+      .insert([{
+        document_id: document.id,
+        llm_response_html: analysisHtml
+      }]);
+
+    if (resultError) {
+      console.error('Error saving analysis:', resultError);
+    }
+
+    // Update document as processed
+    await supabase
+      .from('documents')
+      .update({ processed: true, processed_at: new Date().toISOString() })
+      .eq('id', document.id);
 
     res.status(200).json({
       message: 'Document processed successfully',
@@ -73,22 +79,19 @@ router.get('/inbox', authMiddleware, async (req: AuthRequest, res: Response): Pr
   try {
     const userId = req.user!.userId;
 
-    const documents = await prisma.document.findMany({
-      where: { userId },
-      select: {
-        id: true,
-        filename: true,
-        source: true,
-        processed: true,
-        receivedAt: true,
-        processedAt: true
-      },
-      orderBy: {
-        receivedAt: 'desc'
-      }
-    });
+    const { data: documents, error } = await supabase
+      .from('documents')
+      .select('id, filename, source, processed, received_at, processed_at')
+      .eq('user_id', userId)
+      .order('received_at', { ascending: false });
 
-    res.status(200).json({ documents });
+    if (error) {
+      console.error('Error fetching documents:', error);
+      res.status(500).json({ error: 'Failed to fetch documents' });
+      return;
+    }
+
+    res.status(200).json({ documents: documents || [] });
   } catch (error) {
     console.error('Inbox error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -100,14 +103,19 @@ router.get('/inbox/unread-count', authMiddleware, async (req: AuthRequest, res: 
   try {
     const userId = req.user!.userId;
 
-    const count = await prisma.document.count({
-      where: {
-        userId,
-        processed: false
-      }
-    });
+    const { count, error } = await supabase
+      .from('documents')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('processed', false);
 
-    res.status(200).json({ unreadCount: count });
+    if (error) {
+      console.error('Error fetching unread count:', error);
+      res.status(500).json({ error: 'Failed to fetch unread count' });
+      return;
+    }
+
+    res.status(200).json({ unreadCount: count || 0 });
   } catch (error) {
     console.error('Unread count error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -120,48 +128,44 @@ router.post('/process-latest', authMiddleware, async (req: AuthRequest, res: Res
     const userId = req.user!.userId;
 
     // Find latest unprocessed document
-    const document = await prisma.document.findFirst({
-      where: {
-        userId,
-        processed: false
-      },
-      orderBy: {
-        receivedAt: 'desc'
-      },
-      select: {
-        id: true,
-        filename: true,
-        pdfData: true
-      }
-    });
+    const { data: document, error: docError } = await supabase
+      .from('documents')
+      .select('id, filename, pdf_data')
+      .eq('user_id', userId)
+      .eq('processed', false)
+      .order('received_at', { ascending: false })
+      .limit(1)
+      .single();
 
-    if (!document) {
+    if (docError || !document) {
       res.status(404).json({ error: 'No unprocessed documents found' });
       return;
     }
 
     // Extract text from PDF
-    const pdfText = await extractTextFromPDF(Buffer.from(document.pdfData));
+    const pdfData = Buffer.from(document.pdf_data);
+    const pdfText = await extractTextFromPDF(pdfData);
 
     // Analyze with Gemini
     const analysisHtml = await analyzeExpenseStatement(pdfText);
 
-    // Save analysis result and update document in a transaction
-    await prisma.$transaction([
-      prisma.analysisResult.create({
-        data: {
-          documentId: document.id,
-          llmResponseHtml: analysisHtml
-        }
-      }),
-      prisma.document.update({
-        where: { id: document.id },
-        data: {
-          processed: true,
-          processedAt: new Date()
-        }
-      })
-    ]);
+    // Save analysis result
+    const { error: resultError } = await supabase
+      .from('analysis_results')
+      .insert([{
+        document_id: document.id,
+        llm_response_html: analysisHtml
+      }]);
+
+    if (resultError) {
+      console.error('Error saving analysis:', resultError);
+    }
+
+    // Update document as processed
+    await supabase
+      .from('documents')
+      .update({ processed: true, processed_at: new Date().toISOString() })
+      .eq('id', document.id);
 
     res.status(200).json({
       message: 'Document processed successfully',
@@ -181,20 +185,14 @@ router.post('/process/:documentId', authMiddleware, async (req: AuthRequest, res
     const { documentId } = req.params;
 
     // Find document
-    const document = await prisma.document.findFirst({
-      where: {
-        id: documentId,
-        userId
-      },
-      select: {
-        id: true,
-        filename: true,
-        pdfData: true,
-        processed: true
-      }
-    });
+    const { data: document, error: docError } = await supabase
+      .from('documents')
+      .select('id, filename, pdf_data, processed')
+      .eq('id', documentId)
+      .eq('user_id', userId)
+      .single();
 
-    if (!document) {
+    if (docError || !document) {
       res.status(404).json({ error: 'Document not found' });
       return;
     }
@@ -205,27 +203,29 @@ router.post('/process/:documentId', authMiddleware, async (req: AuthRequest, res
     }
 
     // Extract text from PDF
-    const pdfText = await extractTextFromPDF(Buffer.from(document.pdfData));
+    const pdfData = Buffer.from(document.pdf_data);
+    const pdfText = await extractTextFromPDF(pdfData);
 
     // Analyze with Gemini
     const analysisHtml = await analyzeExpenseStatement(pdfText);
 
-    // Save analysis result and update document in a transaction
-    await prisma.$transaction([
-      prisma.analysisResult.create({
-        data: {
-          documentId: document.id,
-          llmResponseHtml: analysisHtml
-        }
-      }),
-      prisma.document.update({
-        where: { id: document.id },
-        data: {
-          processed: true,
-          processedAt: new Date()
-        }
-      })
-    ]);
+    // Save analysis result
+    const { error: resultError } = await supabase
+      .from('analysis_results')
+      .insert([{
+        document_id: document.id,
+        llm_response_html: analysisHtml
+      }]);
+
+    if (resultError) {
+      console.error('Error saving analysis:', resultError);
+    }
+
+    // Update document as processed
+    await supabase
+      .from('documents')
+      .update({ processed: true, processed_at: new Date().toISOString() })
+      .eq('id', document.id);
 
     res.status(200).json({
       message: 'Document processed successfully',
@@ -244,26 +244,15 @@ router.get('/result/:documentId', authMiddleware, async (req: AuthRequest, res: 
     const userId = req.user!.userId;
     const { documentId } = req.params;
 
-    // Verify document belongs to user and get result
-    const document = await prisma.document.findFirst({
-      where: {
-        id: documentId,
-        userId
-      },
-      select: {
-        id: true,
-        filename: true,
-        processed: true,
-        analysisResult: {
-          select: {
-            llmResponseHtml: true,
-            createdAt: true
-          }
-        }
-      }
-    });
+    // Verify document belongs to user
+    const { data: document, error: docError } = await supabase
+      .from('documents')
+      .select('id, filename, processed')
+      .eq('id', documentId)
+      .eq('user_id', userId)
+      .single();
 
-    if (!document) {
+    if (docError || !document) {
       res.status(404).json({ error: 'Document not found' });
       return;
     }
@@ -273,7 +262,14 @@ router.get('/result/:documentId', authMiddleware, async (req: AuthRequest, res: 
       return;
     }
 
-    if (!document.analysisResult) {
+    // Get analysis result
+    const { data: result, error: resultError } = await supabase
+      .from('analysis_results')
+      .select('llm_response_html, created_at')
+      .eq('document_id', documentId)
+      .single();
+
+    if (resultError || !result) {
       res.status(404).json({ error: 'Analysis result not found' });
       return;
     }
@@ -281,8 +277,8 @@ router.get('/result/:documentId', authMiddleware, async (req: AuthRequest, res: 
     res.status(200).json({
       documentId,
       filename: document.filename,
-      analysis: document.analysisResult.llmResponseHtml,
-      analyzedAt: document.analysisResult.createdAt
+      analysis: result.llm_response_html,
+      analyzedAt: result.created_at
     });
   } catch (error) {
     console.error('Get result error:', error);

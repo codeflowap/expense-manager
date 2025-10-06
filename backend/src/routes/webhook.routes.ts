@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { supabase } from '../db';
+import { prisma } from '../prisma';
 import { convertBase64ToPDF } from '../services/pdf.service';
 
 const router = Router();
@@ -15,13 +15,12 @@ router.post('/pipedream', async (req: Request, res: Response): Promise<void> => 
     }
 
     // Find user by email
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('id')
-      .eq('email', user_email)
-      .single();
+    const user = await prisma.user.findUnique({
+      where: { email: user_email },
+      select: { id: true }
+    });
 
-    if (userError || !user) {
+    if (!user) {
       res.status(404).json({ error: 'User not found' });
       return;
     }
@@ -30,23 +29,18 @@ router.post('/pipedream', async (req: Request, res: Response): Promise<void> => 
     const pdfBuffer = convertBase64ToPDF(pdf_base64);
 
     // Save document to database
-    const { data: document, error: docError } = await supabase
-      .from('documents')
-      .insert([{
-        user_id: user.id,
+    const document = await prisma.document.create({
+      data: {
+        userId: user.id,
         filename,
-        pdf_data: pdfBuffer,
+        pdfData: pdfBuffer,
         source: 'pipedream',
         processed: false
-      }])
-      .select('id')
-      .single();
-
-    if (docError || !document) {
-      console.error('Error saving document from Pipedream:', docError);
-      res.status(500).json({ error: 'Failed to save document' });
-      return;
-    }
+      },
+      select: {
+        id: true
+      }
+    });
 
     res.status(200).json({
       message: 'Document received successfully',
