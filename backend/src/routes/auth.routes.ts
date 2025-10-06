@@ -98,4 +98,46 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
+// Reset password endpoint (for forgotten passwords)
+router.post('/reset-password', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email, newPassword } = req.body;
+
+    if (!email || !newPassword) {
+      res.status(400).json({ error: 'Email and new password are required' });
+      return;
+    }
+
+    // Find user by email
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true, email: true }
+    });
+
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    // Hash new password and update
+    const passwordHash = await hashPassword(newPassword);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash }
+    });
+
+    // Generate new JWT token
+    const token = generateToken({ userId: user.id, email: user.email });
+
+    res.status(200).json({
+      message: 'Password reset successfully',
+      token,
+      user: { id: user.id, email: user.email }
+    });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

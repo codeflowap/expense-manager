@@ -12,6 +12,7 @@ let lastVisitedPage = 'dashboardPage'; // Track where user came from
 const pages = {
     login: document.getElementById('loginPage'),
     register: document.getElementById('registerPage'),
+    forgotPassword: document.getElementById('forgotPasswordPage'),
     dashboard: document.getElementById('dashboardPage'),
     loading: document.getElementById('loadingPage'),
     inbox: document.getElementById('inboxPage'),
@@ -132,6 +133,46 @@ document.getElementById('registerBtn').addEventListener('click', async () => {
 
 document.getElementById('showRegisterBtn').addEventListener('click', () => showPage('register'));
 document.getElementById('showLoginBtn').addEventListener('click', () => showPage('login'));
+document.getElementById('showForgotPasswordBtn').addEventListener('click', () => showPage('forgotPassword'));
+document.getElementById('backToLoginBtn').addEventListener('click', () => showPage('login'));
+
+// Forgot Password / Reset Password
+document.getElementById('resetPasswordBtn').addEventListener('click', async () => {
+    const email = document.getElementById('resetEmail').value.trim();
+    const newPassword = document.getElementById('newPassword').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+
+    if (!email || !newPassword || !confirmPassword) {
+        showError('Please fill in all fields');
+        return;
+    }
+
+    if (newPassword !== confirmPassword) {
+        showError('Passwords do not match');
+        return;
+    }
+
+    if (newPassword.length < 6) {
+        showError('Password must be at least 6 characters');
+        return;
+    }
+
+    try {
+        const data = await apiCall('/auth/reset-password', {
+            method: 'POST',
+            body: JSON.stringify({ email, newPassword })
+        });
+
+        authToken = data.token;
+        currentUser = data.user;
+        localStorage.setItem('authToken', authToken);
+        localStorage.setItem('currentUser', JSON.stringify(currentUser));
+        showSuccess('Password reset successfully! You are now logged in.');
+        updateUIForAuth();
+    } catch (error) {
+        showError(error.message);
+    }
+});
 
 // File Upload
 const fileInput = document.getElementById('file-input');
