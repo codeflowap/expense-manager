@@ -138,11 +138,15 @@
             cursor: pointer;
             background-color: #fafafa;
             transition: all 0.2s;
+            display: block;
         }
         #upload-area.hover { border-color: var(--gemini-blue); background-color: #f5f8ff; }
         #file-input { display: none; }
 
+        .upload-prompt { text-align: center; }
         .upload-prompt .icon { color: var(--gemini-blue); margin-bottom: 15px; }
+        .upload-prompt p { margin: 10px 0; font-size: 1em; color: var(--gemini-dark-blue); }
+        .upload-prompt span { display: block; font-size: 0.9em; color: var(--gemini-gray); margin-top: 8px; }
         .upload-status { display: none; padding-top: 20px; }
         .status-line { display: flex; align-items: center; justify-content: center; gap: 10px; }
 
