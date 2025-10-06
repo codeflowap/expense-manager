@@ -1,13 +1,11 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -21,16 +19,16 @@ model User {
 }
 
 model Document {
-  id             String           @id @default(uuid()) @db.Uuid
-  userId         String           @map("user_id") @db.Uuid
-  filename       String           @db.VarChar(255)
-  pdfData        Bytes            @map("pdf_data")
-  source         String           @db.VarChar(50)
-  processed      Boolean          @default(false)
-  receivedAt     DateTime         @default(now()) @map("received_at") @db.Timestamp(6)
-  processedAt    DateTime?        @map("processed_at") @db.Timestamp(6)
-  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String          @id @default(uuid()) @db.Uuid
+  userId         String          @map("user_id") @db.Uuid
+  filename       String          @db.VarChar(255)
+  pdfData        Bytes           @map("pdf_data")
+  source         String          @db.VarChar(50)
+  processed      Boolean         @default(false)
+  receivedAt     DateTime        @default(now()) @map("received_at") @db.Timestamp(6)
+  processedAt    DateTime?       @map("processed_at") @db.Timestamp(6)
   analysisResult AnalysisResult?
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([processed])
@@ -41,7 +39,7 @@ model Document {
 model AnalysisResult {
   id              String   @id @default(uuid()) @db.Uuid
   documentId      String   @unique @map("document_id") @db.Uuid
-  llmResponseHtml String   @map("llm_response_html") @db.Text
+  llmResponseHtml String   @map("llm_response_html")
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamp(6)
   document        Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
