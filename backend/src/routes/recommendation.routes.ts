@@ -7,7 +7,7 @@ const router = Router();
 // Generate coffee reallocation recommendations
 router.post('/coffee', authMiddleware, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { analysisHtml, restaurants } = req.body as { analysisHtml?: string; restaurants?: MenuRestaurantInput[] };
+    const { analysisHtml, restaurants, query } = req.body as { analysisHtml?: string; restaurants?: MenuRestaurantInput[]; query?: string };
 
     if (!analysisHtml || typeof analysisHtml !== 'string') {
       res.status(400).json({ error: 'analysisHtml is required' });
@@ -29,7 +29,7 @@ router.post('/coffee', authMiddleware, async (req: AuthRequest, res: Response): 
 
     // Try to detect coffee spend directly from the analysis HTML as a hint
     const hint = extractCoffeeSpend(analysisHtml);
-    const rec = await recommendCoffeeAlternatives(analysisHtml, trimmed, hint);
+    const rec = await recommendCoffeeAlternatives(analysisHtml, trimmed, hint, query);
     res.status(200).json({ success: true, recommendations: rec });
   } catch (error) {
     console.error('Recommendation error:', error);

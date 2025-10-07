@@ -159,7 +159,8 @@ export interface CoffeeRecommendationResult {
 export const recommendCoffeeAlternatives = async (
   analysisHtml: string,
   restaurants: MenuRestaurantInput[],
-  coffeeSpendHint?: number
+  coffeeSpendHint?: number,
+  userIntent?: string
 ): Promise<CoffeeRecommendationResult> => {
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
@@ -168,6 +169,9 @@ export const recommendCoffeeAlternatives = async (
     const menuJson = JSON.stringify(restaurants).slice(0, 200_000); // guard against oversized prompts
     const restaurantCount = Array.isArray(restaurants) ? restaurants.length : 0;
     const restaurantNames = (restaurants || []).map(r => r?.name).filter(Boolean).slice(0, 10).join(', ');
+    const intentLine = (userIntent && userIntent.trim())
+      ? `User intent: "${userIntent.trim()}". Only propose items consistent with this food type/cuisine. For example, if intent mentions fish/seafood, choose only seafood/fish items; avoid beverages and unrelated categories.`
+      : 'Only propose substantive food items; avoid beverages.';
 
     const hintLine = (typeof coffeeSpendHint === 'number' && coffeeSpendHint > 0)
       ? `Detected coffee spend (hint): $${coffeeSpendHint.toFixed(2)}. Use this value as authoritative if present.`
@@ -191,6 +195,8 @@ Task:
 - Use only the provided menu items and prices.
 
 ${hintLine}
+
+${intentLine}
 
 Return ONLY valid JSON with this exact structure:
 {

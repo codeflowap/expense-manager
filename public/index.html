@@ -277,12 +277,35 @@
             border-radius: 8px;
         }
         .clickable-cell {
-            color: var(--gemini-blue);
             cursor: pointer;
-            text-decoration: underline;
+            font-weight: 600;
+            transition: background 0.15s ease, color 0.15s ease;
+            display: inline-block;
+            background: #f5f6f7;
+            color: var(--gemini-gray);
+            padding: 6px 10px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            line-height: 1;
+            border: 1px solid #E0E3E7;
+            white-space: nowrap;
+            text-decoration: none;
+            box-shadow: none;
         }
-        .clickable-cell:hover {
-            color: var(--gemini-teal);
+        .clickable-cell span {
+            display: inline;
+            background: transparent;
+            color: inherit;
+            padding: 0;
+            border-radius: 0;
+            font-size: inherit;
+            transition: none;
+            box-shadow: none;
+        }
+        .clickable-cell:hover,
+        .clickable-cell:hover span {
+            background: #eef1f4;
+            color: var(--gemini-gray);
         }
         .inbox-table th:nth-child(4), .inbox-table td:nth-child(4),
         .inbox-table th:nth-child(5), .inbox-table td:nth-child(5) {
@@ -539,11 +562,34 @@
         }
         .clickable-cell {
             cursor: pointer;
-            color: var(--gemini-blue);
-            text-decoration: underline;
+            font-weight: 600;
+            transition: background 0.15s ease, color 0.15s ease;
+            display: inline-block;
+            background: #f5f6f7;
+            color: var(--gemini-gray);
+            padding: 6px 10px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            line-height: 1;
+            border: 1px solid #E0E3E7;
+            white-space: nowrap;
+            text-decoration: none;
+            box-shadow: none;
         }
-        .clickable-cell:hover {
-            color: var(--gemini-dark-blue);
+        .clickable-cell span {
+            display: inline;
+            background: transparent;
+            color: inherit;
+            padding: 0;
+            border-radius: 0;
+            font-size: inherit;
+            transition: none;
+            box-shadow: none;
+        }
+        .clickable-cell:hover,
+        .clickable-cell:hover span {
+            background: #eef1f4;
+            color: var(--gemini-gray);
         }
 
         .hidden { display: none !important; }

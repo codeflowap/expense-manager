@@ -1203,6 +1203,8 @@ function displayRestaurantResults(data) {
         ...r,
         categories: sanitizeCategories(r.categories)
     }));
+    // Keep last query for downstream recommendation filtering
+    window.lastRestaurantQuery = data.query || '';
 
     // Helpers to decide if data is present for menu/reviews
     const hasAnyData = (v) => {
@@ -1244,22 +1246,22 @@ function displayRestaurantResults(data) {
         // Categories - make clickable if available (using sanitized categories)
         const hasCategories = Array.isArray(window.restaurantsData[index].categories) && window.restaurantsData[index].categories.length > 0;
         const categoriesCell = hasCategories
-            ? `<span class="clickable-cell" onclick="openCategories(${index})">View All</span>`
+            ? `<div class="clickable-cell" onclick="openCategories(${index})"><span>View All</span></div>`
             : 'N/A';
 
         // Menu - make clickable only if content is detected. Pass whole restaurant to normalize within modal.
         const menuCell = hasMenuLike(restaurant)
-            ? `<span class="clickable-cell" onclick="openMenu(${index})">View Menu</span>`
+            ? `<div class="clickable-cell" onclick="openMenu(${index})"><span>View Menu</span></div>`
             : 'N/A';
 
         // Reviews - make clickable only if content is detected. Prefer storeReviews payload else fall back.
         const reviewsCell = hasReviewsLike(restaurant)
-            ? `<span class="clickable-cell" onclick="openReviews(${index})">View Reviews</span>`
+            ? `<div class="clickable-cell" onclick="openReviews(${index})"><span>View Reviews</span></div>`
             : 'N/A';
 
         // Location - make clickable if available
         const locationCell = restaurant.location
-            ? `<span class="clickable-cell" onclick="openLocation(${index})">View Location</span>`
+            ? `<div class="clickable-cell" onclick="openLocation(${index})"><span>View Location</span></div>`
             : 'N/A';
 
         row.innerHTML = `
@@ -1435,7 +1437,30 @@ function loadLeaflet() {
 // ------- Recommendations (Coffee spend -> menu alternatives) -------
 
 // Extract a compact menu catalog from restaurants data
-function extractMenuCatalog(restaurants) {
+function extractMenuCatalog(restaurants, query = '') {
+    const q = (query || '').toLowerCase().trim();
+    const buildKeywords = (q) => {
+        const base = q.split(/\s+/).filter(Boolean);
+        const set = new Set(base);
+        const addAll = (arr) => arr.forEach(w => set.add(w));
+        // Light synonyms by intent
+        if (q.includes('fish') || q.includes('seafood')) {
+            addAll(['fish','seafood','salmon','tuna','cod','haddock','tilapia','trout','bass','halibut','sardine','mackerel','snapper','sole','catfish','shrimp','prawn','lobster','crab','scallop','oyster','clam','mussel']);
+        }
+        if (q.includes('pizza')) addAll(['pizza','margherita','pepperoni','slice']);
+        if (q.includes('burger')) addAll(['burger','cheeseburger','patty']);
+        if (q.includes('chicken')) addAll(['chicken','tenders','wings','nuggets']);
+        if (q.includes('shawarma')) addAll(['shawarma']);
+        if (q.includes('sushi')) addAll(['sushi','maki','sashimi','nigiri']);
+        if (q.includes('pasta')) addAll(['pasta','spaghetti','fettuccine','penne','lasagna']);
+        if (q.includes('salad')) addAll(['salad']);
+        if (q.includes('steak')) addAll(['steak','ribeye','sirloin']);
+        if (q.includes('taco')) addAll(['taco','quesadilla','burrito']);
+        return Array.from(set).filter(Boolean);
+    };
+    const keywords = buildKeywords(q);
+    const hasIntent = keywords.length > 0;
+    const beverageWords = ['coffee','tea','latte','mocha','espresso','americano','cappuccino','frapp','macchiato','drink','beverage','soda','coke','pepsi','juice','water'];
     const nameKeys = ['itemName','productName','dishName','title','name','label','sectionTitle','shortName','longName','heading'];
     const priceKeys = ['price','priceTagline','formattedPrice','priceText','amount','value','priceCents','centAmount','cents'];
 
@@ -1517,7 +1542,7 @@ function extractMenuCatalog(restaurants) {
         if (typeof node === 'object') {
             const name = getName(node);
             const price = getPrice(node);
-            if (name && price != null) pushItem({ name, price });
+            if (name && price != null) pushItem({ name, price, description: node.description || node.itemDescription || '' });
             // Explore common containers
             ['sectionItems','items','menuItems','products','entries','children','sections','categories','groups','cards','catalogItems','menu','menus','data'].forEach(k => visit(node[k], pushItem));
             for (const v of Object.values(node)) {
@@ -1536,6 +1561,12 @@ function extractMenuCatalog(restaurants) {
             if (typeof it.price !== 'number' || !isFinite(it.price)) return;
             // Clamp unrealistic menu prices; treat values above $200 as likely bad parse
             if (it.price < 25 || it.price > 200) return;
+            const nameLc = String(it.name || '').toLowerCase();
+            const descLc = String(it.description || '').toLowerCase();
+            // Skip obvious beverages
+            if (beverageWords.some(w => nameLc.includes(w) || descLc.includes(w))) return;
+            // If user intent is present, require a keyword match in name/description
+            if (hasIntent && !keywords.some(k => nameLc.includes(k) || descLc.includes(k))) return;
             const key = `${it.name.toLowerCase().trim()}|${it.price.toFixed(2)}`;
             if (!dedup.has(key)) dedup.set(key, it);
         });
@@ -1564,7 +1595,7 @@ async function requestRecommendations() {
     }
 
     // Build menu catalog
-    const catalog = extractMenuCatalog(window.restaurantsData);
+    const catalog = extractMenuCatalog(window.restaurantsData, window.lastRestaurantQuery || '');
     if (!catalog.length) {
         showError('No menu items with prices found to generate recommendations.');
         return;
@@ -1590,7 +1621,8 @@ async function requestRecommendations() {
             method: 'POST',
             body: JSON.stringify({
                 analysisHtml: window.lastAnalysisHtml,
-                restaurants: catalog
+                restaurants: catalog,
+                query: window.lastRestaurantQuery || ''
             })
         });
         renderRecommendationsTable(data.recommendations);
