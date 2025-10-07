@@ -7,6 +7,7 @@ import { initDatabase } from './prisma';
 import authRoutes from './routes/auth.routes';
 import documentRoutes from './routes/document.routes';
 import webhookRoutes from './routes/webhook.routes';
+import restaurantRoutes from './routes/restaurant.routes';
 
 dotenv.config();
 
@@ -26,6 +27,7 @@ app.use(express.static(publicPath));
 app.use('/api/auth', authRoutes);
 app.use('/api', documentRoutes);
 app.use('/api/webhook', webhookRoutes);
+app.use('/api/restaurants', restaurantRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {

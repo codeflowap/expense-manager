@@ -16,7 +16,8 @@ const pages = {
     dashboard: document.getElementById('dashboardPage'),
     loading: document.getElementById('loadingPage'),
     inbox: document.getElementById('inboxPage'),
-    result: document.getElementById('resultPage')
+    result: document.getElementById('resultPage'),
+    restaurants: document.getElementById('restaurantsPage')
 };
 
 const inboxIcon = document.getElementById('inboxIcon');
@@ -33,12 +34,50 @@ function showPage(pageName) {
     }
 }
 
+// Toast Notification System
+function showToast(message, type = 'success') {
+    const container = document.getElementById('toastContainer');
+
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+
+    const icon = type === 'success' ? '✓' : '✕';
+    const title = type === 'success' ? 'Success' : 'Error';
+
+    toast.innerHTML = `
+        <div class="toast-icon">${icon}</div>
+        <div class="toast-content">
+            <div class="toast-title">${title}</div>
+            <div class="toast-message">${message}</div>
+        </div>
+        <button class="toast-close">×</button>
+    `;
+
+    container.appendChild(toast);
+
+    // Close button
+    const closeBtn = toast.querySelector('.toast-close');
+    closeBtn.addEventListener('click', () => removeToast(toast));
+
+    // Auto-remove after 5 seconds
+    setTimeout(() => removeToast(toast), 5000);
+}
+
+function removeToast(toast) {
+    toast.classList.add('hiding');
+    setTimeout(() => {
+        if (toast.parentElement) {
+            toast.parentElement.removeChild(toast);
+        }
+    }, 300);
+}
+
 function showError(message) {
-    alert(message); // Simple alert for now, can be enhanced
+    showToast(message, 'error');
 }
 
 function showSuccess(message) {
-    alert(message);
+    showToast(message, 'success');
 }
 
 async function apiCall(endpoint, options = {}) {
@@ -70,14 +109,21 @@ function updateUIForAuth() {
         showPage('dashboard');
         inboxIcon.classList.remove('hidden');
         userProfile.classList.remove('hidden');
-        userName.textContent = currentUser.email.split('@')[0];
+
+        // Update username display (show name if available, otherwise email)
+        userName.textContent = currentUser.name || currentUser.email.split('@')[0];
+
         // Update avatar if user has custom avatar
         const userAvatar = document.getElementById('userAvatar');
-        if (currentUser.avatarUrl) {
-            userAvatar.src = currentUser.avatarUrl;
-        } else {
-            userAvatar.src = 'https://i.pravatar.cc/40';
-        }
+        const profileDropdownAvatar = document.getElementById('profileDropdownAvatar');
+        const avatarSrc = currentUser.avatarUrl || 'https://i.pravatar.cc/40';
+        userAvatar.src = avatarSrc;
+        profileDropdownAvatar.src = avatarSrc.replace('40', '80');
+
+        // Update profile form fields
+        document.getElementById('profileName').value = currentUser.name || '';
+        document.getElementById('profileAddress').value = currentUser.address || '';
+
         startPolling();
     } else {
         showPage('login');
@@ -401,6 +447,10 @@ document.getElementById('backFromResult').addEventListener('click', () => {
     showPage(lastVisitedPage.replace('Page', ''));
 });
 
+document.getElementById('backFromRestaurants').addEventListener('click', () => {
+    showPage('dashboard');
+});
+
 // Polling for unread count
 async function updateInboxCount() {
     try {
@@ -612,11 +662,12 @@ avatarInput.addEventListener('change', async (e) => {
             });
 
             // Update local state
-            currentUser.avatarUrl = avatarUrl;
+            currentUser = data.user;
             localStorage.setItem('currentUser', JSON.stringify(currentUser));
 
-            // Update displayed avatar
+            // Update displayed avatars
             userAvatar.src = avatarUrl;
+            document.getElementById('profileDropdownAvatar').src = avatarUrl;
             showSuccess('Avatar updated successfully!');
         };
         reader.readAsDataURL(file);
@@ -626,6 +677,58 @@ avatarInput.addEventListener('change', async (e) => {
 
     // Clear file input
     avatarInput.value = '';
+});
+
+// Profile Dropdown Toggle
+const profileDropdown = document.getElementById('profileDropdown');
+const userNameElement = document.getElementById('userName');
+
+userNameElement.addEventListener('click', (e) => {
+    e.stopPropagation();
+    profileDropdown.classList.toggle('show');
+});
+
+// Close dropdown when clicking outside
+document.addEventListener('click', (e) => {
+    if (!profileDropdown.contains(e.target) && !userNameElement.contains(e.target)) {
+        profileDropdown.classList.remove('show');
+    }
+});
+
+// Profile Dropdown Avatar Click - Trigger Avatar Upload
+document.getElementById('profileDropdownAvatar').addEventListener('click', () => {
+    avatarInput.click();
+});
+
+// Save Profile Button
+document.getElementById('saveProfileBtn').addEventListener('click', async () => {
+    const name = document.getElementById('profileName').value.trim();
+    const address = document.getElementById('profileAddress').value.trim();
+
+    try {
+        const data = await apiCall('/auth/update-profile', {
+            method: 'POST',
+            body: JSON.stringify({
+                email: currentUser.email,
+                name,
+                address
+            })
+        });
+
+        // Update current user
+        currentUser = data.user;
+        localStorage.setItem('currentUser', JSON.stringify(currentUser));
+
+        // Update UI
+        updateUIForAuth();
+
+        // Close dropdown
+        profileDropdown.classList.remove('show');
+
+        showSuccess('Profile updated successfully!');
+    } catch (error) {
+        showError('Failed to update profile: ' + error.message);
+    }
 });
 
 // Logout
@@ -641,6 +744,79 @@ document.getElementById('logoutBtn').addEventListener('click', () => {
 
     showSuccess('Logged out successfully!');
 });
+
+// Display Restaurant Results
+function displayRestaurantResults(data) {
+    console.log('Restaurant search results:', data);
+
+    // Update title
+    document.getElementById('restaurantSearchTitle').textContent = `${data.query} Restaurants near you`;
+
+    // Populate table
+    const tbody = document.getElementById('restaurantsTableBody');
+    tbody.innerHTML = '';
+
+    if (!data.restaurants || data.restaurants.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--gemini-gray);">No restaurants found</td></tr>';
+        showPage('restaurants');
+        return;
+    }
+
+    data.restaurants.forEach(restaurant => {
+        const row = document.createElement('tr');
+
+        // Image
+        const imgSrc = restaurant.heroImageUrl || 'https://via.placeholder.com/80';
+
+        // Categories
+        const categories = Array.isArray(restaurant.categories)
+            ? restaurant.categories.slice(0, 3).join(', ')
+            : (restaurant.categories || 'N/A');
+
+        row.innerHTML = `
+            <td><img src="${imgSrc}" class="restaurant-img" alt="${restaurant.title}"></td>
+            <td><strong>${restaurant.title || 'Unknown'}</strong></td>
+            <td>${categories}</td>
+            <td>${restaurant.menu ? 'Available' : 'N/A'}</td>
+            <td>${restaurant.storeReviews ? 'Available' : 'N/A'}</td>
+            <td>${restaurant.location?.address || 'N/A'}</td>
+        `;
+
+        tbody.appendChild(row);
+    });
+
+    showPage('restaurants');
+    showSuccess(`Found ${data.count} restaurants for "${data.query}"`);
+}
+
+// Search Restaurants
+async function searchRestaurants(query) {
+    // Check if user has address
+    if (!currentUser || !currentUser.address) {
+        showError('Please update your address in your profile before searching for restaurants');
+        // Open profile dropdown
+        document.getElementById('profileDropdown').classList.add('show');
+        return;
+    }
+
+    showPage('loading');
+
+    try {
+        const data = await apiCall('/restaurants/search', {
+            method: 'POST',
+            body: JSON.stringify({
+                query,
+                address: currentUser.address
+            })
+        });
+
+        // Store search results and show results page
+        displayRestaurantResults(data);
+    } catch (error) {
+        showError(error.message);
+        showPage('dashboard');
+    }
+}
 
 // Load Food Gallery Images
 async function loadFoodGallery() {
@@ -661,8 +837,13 @@ async function loadFoodGallery() {
         shuffledImages.forEach(filename => {
             const img = document.createElement('img');
             img.src = `images/${filename}`;
-            img.alt = filename.replace(/\.[^/.]+$/, ''); // Remove extension for alt text
+            const foodName = filename.replace(/\.[^/.]+$/, ''); // Remove extension
+            img.alt = foodName;
             img.className = 'food-item';
+
+            // Add click handler to search for restaurants
+            img.addEventListener('click', () => searchRestaurants(foodName));
+
             gallery.appendChild(img);
         });
     } catch (error) {

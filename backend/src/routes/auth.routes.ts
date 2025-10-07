@@ -34,6 +34,8 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
       select: {
         id: true,
         email: true,
+        name: true,
+        address: true,
         avatarUrl: true
       }
     });
@@ -44,7 +46,7 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
     res.status(201).json({
       message: 'User registered successfully',
       token,
-      user: { id: newUser.id, email: newUser.email }
+      user: newUser
     });
   } catch (error) {
     console.error('Registration error:', error);
@@ -68,6 +70,8 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
       select: {
         id: true,
         email: true,
+        name: true,
+        address: true,
         passwordHash: true,
         avatarUrl: true
       }
@@ -92,7 +96,13 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     res.status(200).json({
       message: 'Login successful',
       token,
-      user: { id: user.id, email: user.email, avatarUrl: user.avatarUrl }
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        address: user.address,
+        avatarUrl: user.avatarUrl
+      }
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -156,7 +166,7 @@ router.post('/update-avatar', async (req: Request, res: Response): Promise<void>
     const user = await prisma.user.update({
       where: { email },
       data: { avatarUrl },
-      select: { id: true, email: true, avatarUrl: true }
+      select: { id: true, email: true, name: true, address: true, avatarUrl: true }
     });
 
     res.status(200).json({
@@ -165,6 +175,36 @@ router.post('/update-avatar', async (req: Request, res: Response): Promise<void>
     });
   } catch (error) {
     console.error('Update avatar error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update profile endpoint (name and address)
+router.post('/update-profile', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email, name, address } = req.body;
+
+    if (!email) {
+      res.status(400).json({ error: 'Email is required' });
+      return;
+    }
+
+    // Update user's profile
+    const user = await prisma.user.update({
+      where: { email },
+      data: {
+        ...(name !== undefined && { name }),
+        ...(address !== undefined && { address })
+      },
+      select: { id: true, email: true, name: true, address: true, avatarUrl: true }
+    });
+
+    res.status(200).json({
+      message: 'Profile updated successfully',
+      user
+    });
+  } catch (error) {
+    console.error('Update profile error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
