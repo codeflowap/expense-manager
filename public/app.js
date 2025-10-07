@@ -1315,44 +1315,133 @@ async function loadFoodGallery() {
 updateUIForAuth();
 loadFoodGallery();
 
-// Google Maps Integration
+// Maps Integration (Google primary, Leaflet fallback)
 let mapInstance = null;
 let userMarker = null;
 let restaurantMarkers = [];
+let mapsProvider = 'auto'; // 'google' | 'leaflet' | 'auto'
+
+// Load config and the right map library on demand
+let mapsLoadingPromise = null;
+async function ensureMapsLibraryLoaded() {
+    if (window.google && window.google.maps) return; // Google already loaded
+    if (window.L && typeof window.L.map === 'function') return; // Leaflet already loaded
+
+    if (!mapsLoadingPromise) {
+        mapsLoadingPromise = (async () => {
+            // Fetch public config (provider preference + API key)
+            let key = '';
+            try {
+                const resp = await fetch(`${API_URL}/config`);
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const cfg = await resp.json();
+                mapsProvider = (cfg.mapsProvider || 'auto').toLowerCase();
+                key = cfg.googleMapsApiKey || '';
+            } catch (e) {
+                console.warn('Config fetch failed; falling back to Leaflet:', e);
+                mapsProvider = 'leaflet';
+            }
+
+            // Decide provider
+            let providerToUse = mapsProvider;
+            if (providerToUse === 'auto') {
+                providerToUse = key ? 'google' : 'leaflet';
+            }
+
+            if (providerToUse === 'google') {
+                if (!key) throw new Error('Missing Google Maps API key');
+                await loadGoogleMaps(key);
+                mapsProvider = 'google';
+            } else {
+                await loadLeaflet();
+                mapsProvider = 'leaflet';
+            }
+        })();
+    }
+    return mapsLoadingPromise;
+}
+
+function loadGoogleMaps(key) {
+    return new Promise((resolve, reject) => {
+        if (window.google && window.google.maps) return resolve();
+        const script = document.createElement('script');
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&libraries=places`;
+        script.async = true;
+        script.defer = true;
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('Failed to load Google Maps library'));
+        document.head.appendChild(script);
+    });
+}
+
+function loadLeaflet() {
+    return new Promise((resolve, reject) => {
+        if (window.L && typeof window.L.map === 'function') return resolve();
+
+        // Inject CSS
+        const cssId = 'leaflet-css';
+        if (!document.getElementById(cssId)) {
+            const link = document.createElement('link');
+            link.id = cssId;
+            link.rel = 'stylesheet';
+            link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+            document.head.appendChild(link);
+        }
+
+        // Inject JS
+        const script = document.createElement('script');
+        script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+        script.async = true;
+        script.defer = true;
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('Failed to load Leaflet library'));
+        document.head.appendChild(script);
+    });
+}
 
 // Show Map Button Click Handler
-document.getElementById('showMapBtn').addEventListener('click', () => {
+document.getElementById('showMapBtn').addEventListener('click', async () => {
     if (!window.restaurantsData || window.restaurantsData.length === 0) {
         showError('No restaurants to display on map');
         return;
     }
 
     // Show map container
-    document.getElementById('restaurantMapContainer').style.display = 'block';
+    const container = document.getElementById('restaurantMapContainer');
+    container.style.display = 'block';
 
-    // Scroll to map smoothly
-    document.getElementById('restaurantMapContainer').scrollIntoView({ behavior: 'smooth' });
+    // Smooth scroll
+    container.scrollIntoView({ behavior: 'smooth' });
 
-    // Initialize or update map
-    initializeMap();
+    try {
+        await ensureMapsLibraryLoaded();
+        await initializeMap(); // dispatches to provider-specific implementation
+    } catch (err) {
+        console.error(err);
+        showError(`Map failed to load: ${err.message || err}`);
+    }
 });
 
 async function initializeMap() {
+    if (mapsProvider === 'leaflet') return initializeMapLeaflet();
+    return initializeMapGoogle();
+}
+
+// Provider-specific implementations
+async function initializeMapGoogle() {
     const mapDiv = document.getElementById('restaurantMap');
 
     // Clear previous markers
-    restaurantMarkers.forEach(marker => marker.setMap(null));
+    restaurantMarkers.forEach(marker => marker.setMap && marker.setMap(null));
     restaurantMarkers = [];
 
-    // Get user location from geocoding the address
-    const userLocation = await geocodeAddress(currentUser.address);
-
+    // Get user location
+    const userLocation = await geocodeAddressGoogle(currentUser.address);
     if (!userLocation) {
         showError('Could not locate your address on the map');
         return;
     }
 
-    // Create map centered on user location
     if (!mapInstance) {
         mapInstance = new google.maps.Map(mapDiv, {
             center: userLocation,
@@ -1361,14 +1450,11 @@ async function initializeMap() {
             streetViewControl: false,
             fullscreenControl: true
         });
-    } else {
+    } else if (mapInstance.setCenter) {
         mapInstance.setCenter(userLocation);
     }
 
-    // Add yellow marker for user location
-    if (userMarker) {
-        userMarker.setMap(null);
-    }
+    if (userMarker && userMarker.setMap) userMarker.setMap(null);
 
     userMarker = new google.maps.Marker({
         position: userLocation,
@@ -1384,43 +1470,17 @@ async function initializeMap() {
         }
     });
 
-    // Add user info window
     const userInfoWindow = new google.maps.InfoWindow({
         content: `<div style="padding: 8px;"><strong>Your Location</strong><br/>${currentUser.address}</div>`
     });
+    userMarker.addListener('click', () => userInfoWindow.open(mapInstance, userMarker));
 
-    userMarker.addListener('click', () => {
-        userInfoWindow.open(mapInstance, userMarker);
-    });
-
-    // Add red markers for each restaurant
     for (const restaurant of window.restaurantsData) {
         if (!restaurant.location) continue;
-
-        let restaurantLocation = null;
-
-        // Try to get coordinates from location data
-        if (restaurant.location.latitude && restaurant.location.longitude) {
-            restaurantLocation = {
-                lat: parseFloat(restaurant.location.latitude),
-                lng: parseFloat(restaurant.location.longitude)
-            };
-        } else if (restaurant.location.lat && restaurant.location.lng) {
-            restaurantLocation = {
-                lat: parseFloat(restaurant.location.lat),
-                lng: parseFloat(restaurant.location.lng)
-            };
-        } else if (restaurant.location.address) {
-            // Geocode the restaurant address
-            restaurantLocation = await geocodeAddress(restaurant.location.address);
-        }
-
+        const restaurantLocation = await normalizeRestaurantLocation(restaurant, geocodeAddressGoogle);
         if (!restaurantLocation) continue;
 
-        // Calculate distance from user
         const distance = calculateDistance(userLocation, restaurantLocation);
-
-        // Create red marker for restaurant
         const marker = new google.maps.Marker({
             position: restaurantLocation,
             map: mapInstance,
@@ -1435,40 +1495,116 @@ async function initializeMap() {
             }
         });
 
-        // Create info window with restaurant details
         const infoWindow = new google.maps.InfoWindow({
             content: `
                 <div style="padding: 10px; max-width: 250px;">
                     <h3 style="margin: 0 0 8px 0; font-size: 16px; color: #131314;">${restaurant.title}</h3>
                     <p style="margin: 4px 0; font-size: 13px; color: #5F6368;">📍 ${distance} from you</p>
-                    ${restaurant.location.address ? `<p style="margin: 4px 0; font-size: 12px; color: #5F6368;">${restaurant.location.address}</p>` : ''}
+                    ${restaurant.location.address ? `<p style=\"margin: 4px 0; font-size: 12px; color: #5F6368;\">${restaurant.location.address}</p>` : ''}
                 </div>
             `
         });
-
-        marker.addListener('click', () => {
-            infoWindow.open(mapInstance, marker);
-        });
-
+        marker.addListener('click', () => infoWindow.open(mapInstance, marker));
         restaurantMarkers.push(marker);
     }
 
-    // Adjust map bounds to show all markers
     const bounds = new google.maps.LatLngBounds();
     bounds.extend(userLocation);
     restaurantMarkers.forEach(marker => bounds.extend(marker.getPosition()));
     mapInstance.fitBounds(bounds);
 }
 
-// Geocode address to coordinates
-async function geocodeAddress(address) {
+async function initializeMapLeaflet() {
+    const mapDiv = document.getElementById('restaurantMap');
+
+    // Clear previous markers
+    restaurantMarkers.forEach(marker => marker.remove && marker.remove());
+    restaurantMarkers = [];
+
+    // Remove previous map instance if exists (Leaflet)
+    if (mapInstance && mapInstance.remove) {
+        try { mapInstance.remove(); } catch (e) {}
+        mapInstance = null;
+    }
+
+    const userLocation = await geocodeAddressLeaflet(currentUser.address);
+    if (!userLocation) {
+        showError('Could not locate your address on the map');
+        return;
+    }
+
+    mapInstance = L.map(mapDiv).setView([userLocation.lat, userLocation.lng], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19,
+    }).addTo(mapInstance);
+
+    const yellowIcon = L.divIcon({
+        className: 'custom-marker',
+        html: `<div style="background-color: #FBBC04; border: 3px solid #F9AB00; width: 24px; height: 24px; border-radius: 50%;"></div>`,
+        iconSize: [24, 24],
+        iconAnchor: [12, 12]
+    });
+    if (userMarker && userMarker.remove) userMarker.remove();
+    userMarker = L.marker([userLocation.lat, userLocation.lng], { icon: yellowIcon })
+        .addTo(mapInstance)
+        .bindPopup(`<div style="padding: 8px;"><strong>Your Location</strong><br/>${currentUser.address}</div>`);
+
+    const redIcon = L.divIcon({
+        className: 'custom-marker',
+        html: `<div style="background-color: #EA4335; border: 3px solid #C5221F; width: 20px; height: 20px; border-radius: 50%;"></div>`,
+        iconSize: [20, 20],
+        iconAnchor: [10, 10]
+    });
+
+    const allMarkers = [[userLocation.lat, userLocation.lng]];
+    for (const restaurant of window.restaurantsData) {
+        if (!restaurant.location) continue;
+        const restaurantLocation = await normalizeRestaurantLocation(restaurant, geocodeAddressLeaflet);
+        if (!restaurantLocation) continue;
+        allMarkers.push([restaurantLocation.lat, restaurantLocation.lng]);
+        const distance = calculateDistance(userLocation, restaurantLocation);
+        const marker = L.marker([restaurantLocation.lat, restaurantLocation.lng], { icon: redIcon })
+            .addTo(mapInstance)
+            .bindPopup(`
+                <div style="padding: 10px; max-width: 250px;">
+                    <h3 style="margin: 0 0 8px 0; font-size: 16px; color: #131314;">${restaurant.title}</h3>
+                    <p style="margin: 4px 0; font-size: 13px; color: #5F6368;">📍 ${distance} from you</p>
+                    ${restaurant.location.address ? `<p style=\"margin: 4px 0; font-size: 12px; color: #5F6368;\">${restaurant.location.address}</p>` : ''}
+                </div>
+            `);
+        restaurantMarkers.push(marker);
+    }
+
+    if (allMarkers.length > 1) {
+        const bounds = L.latLngBounds(allMarkers);
+        mapInstance.fitBounds(bounds, { padding: [50, 50] });
+    }
+}
+
+// Normalizes restaurant location input and geocodes if necessary
+async function normalizeRestaurantLocation(restaurant, geocodeFn) {
+    let restaurantLocation = null;
+    const loc = restaurant.location || {};
+    if (loc.latitude && loc.longitude) {
+        restaurantLocation = { lat: parseFloat(loc.latitude), lng: parseFloat(loc.longitude) };
+    } else if (loc.lat && loc.lng) {
+        restaurantLocation = { lat: parseFloat(loc.lat), lng: parseFloat(loc.lng) };
+    } else if (loc.address) {
+        restaurantLocation = await geocodeFn(loc.address);
+    }
+    return restaurantLocation;
+}
+
+// Geocoders per provider
+async function geocodeAddressGoogle(address) {
     return new Promise((resolve) => {
         const geocoder = new google.maps.Geocoder();
-        geocoder.geocode({ address: address }, (results, status) => {
-            if (status === 'OK' && results[0]) {
+        geocoder.geocode({ address }, (results, status) => {
+            if (status === 'OK' && results && results[0]) {
                 resolve({
                     lat: results[0].geometry.location.lat(),
-                    lng: results[0].geometry.location.lng()
+                    lng: results[0].geometry.location.lng(),
                 });
             } else {
                 console.error('Geocoding failed for address:', address, status);
@@ -1476,6 +1612,21 @@ async function geocodeAddress(address) {
             }
         });
     });
+}
+
+async function geocodeAddressLeaflet(address) {
+    try {
+        const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`);
+        const results = await response.json();
+        if (results && results.length > 0) {
+            return { lat: parseFloat(results[0].lat), lng: parseFloat(results[0].lon) };
+        }
+        console.error('Geocoding failed for address:', address);
+        return null;
+    } catch (err) {
+        console.error('Geocoding error:', err);
+        return null;
+    }
 }
 
 // Calculate distance between two lat/lng points (in km)

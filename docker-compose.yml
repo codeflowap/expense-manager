@@ -11,6 +11,7 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - MAPS_PROVIDER=${MAPS_PROVIDER}
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_KEY=${SUPABASE_KEY}
       - JWT_SECRET=${JWT_SECRET}

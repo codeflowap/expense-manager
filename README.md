@@ -202,6 +202,13 @@ JWT_SECRET=your_secure_random_string
 # Server
 PORT=3000
 NODE_ENV=development
+
+# Maps Provider (optional)
+# MAPS_PROVIDER=auto|google|leaflet
+# - auto: use Google if key present, else Leaflet (default)
+# - google: force Google Maps JS API
+# - leaflet: force Leaflet + OpenStreetMap (no key)
+MAPS_PROVIDER=auto
 ```
 
 ## Security Notes
