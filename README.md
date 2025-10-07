@@ -189,8 +189,8 @@ hackathon-spoonity/
 ## Environment Variables
 
 ```env
-# Google AI
-GOOGLE_API_KEY=your_gemini_api_key
+# Google AI (Gemini)
+GEMINI_API_KEY=your_gemini_api_key
 
 # Supabase
 SUPABASE_URL=https://your-project.supabase.co
@@ -205,10 +205,13 @@ NODE_ENV=development
 
 # Maps Provider (optional)
 # MAPS_PROVIDER=auto|google|leaflet
-# - auto: use Google if key present, else Leaflet (default)
+# - auto: use Google if GOOGLE_MAPS_API_KEY (or GOOGLE_API_KEY) is present, else Leaflet
 # - google: force Google Maps JS API
 # - leaflet: force Leaflet + OpenStreetMap (no key)
 MAPS_PROVIDER=auto
+
+# Google Maps JS key (only for the frontend map)
+GOOGLE_MAPS_API_KEY=your_google_maps_js_key
 ```
 
 ## Security Notes

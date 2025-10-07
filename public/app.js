@@ -34,6 +34,27 @@ function showPage(pageName) {
     }
 }
 
+// Contextual loading message helper
+function setLoadingMessage(context = 'default', detail = '') {
+    const el = document.getElementById('loadingMessage');
+    if (!el) return;
+    const clean = (s) => (s || '').toString().trim();
+    const what = clean(detail);
+    switch (context) {
+        case 'restaurants':
+            el.textContent = `Thinking… finding ${what ? what + ' ' : ''}restaurants near you.`;
+            break;
+        case 'analysis':
+            el.textContent = 'Thinking… analyzing your statement and summarizing transactions.';
+            break;
+        case 'fetchResult':
+            el.textContent = 'Thinking… retrieving your analysis.';
+            break;
+        default:
+            el.textContent = 'Thinking… working on it.';
+    }
+}
+
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
@@ -669,6 +690,7 @@ function handleFileSelection() {
 submitBtn.addEventListener('click', async () => {
     if (!selectedFile) return;
 
+    setLoadingMessage('analysis');
     showPage('loading');
 
     try {
@@ -691,6 +713,7 @@ submitBtn.addEventListener('click', async () => {
 
         // Show result
         document.getElementById('resultsContainer').innerHTML = data.analysis;
+        window.lastAnalysisHtml = data.analysis;
 
         // Render daily spending chart
         if (data.dailySpending && data.dailySpending.length > 0) {
@@ -718,6 +741,7 @@ function resetUploadForm() {
 
 // Gmail Fetch Button
 document.getElementById('gmailFetchBtn').addEventListener('click', async () => {
+    setLoadingMessage('analysis');
     showPage('loading');
 
     try {
@@ -727,6 +751,7 @@ document.getElementById('gmailFetchBtn').addEventListener('click', async () => {
 
         // Show result
         document.getElementById('resultsContainer').innerHTML = data.analysis;
+        window.lastAnalysisHtml = data.analysis;
 
         // Render daily spending chart
         if (data.dailySpending && data.dailySpending.length > 0) {
@@ -788,6 +813,7 @@ async function loadInbox() {
 }
 
 window.processDocument = async function(docId) {
+    setLoadingMessage('analysis');
     showPage('loading');
 
     try {
@@ -796,6 +822,7 @@ window.processDocument = async function(docId) {
         });
 
         document.getElementById('resultsContainer').innerHTML = data.analysis;
+        window.lastAnalysisHtml = data.analysis;
 
         // Render daily spending chart
         if (data.dailySpending && data.dailySpending.length > 0) {
@@ -811,11 +838,13 @@ window.processDocument = async function(docId) {
 };
 
 window.viewResult = async function(docId) {
+    setLoadingMessage('fetchResult');
     showPage('loading');
 
     try {
         const data = await apiCall(`/result/${docId}`);
         document.getElementById('resultsContainer').innerHTML = data.analysis;
+        window.lastAnalysisHtml = data.analysis;
 
         // Render daily spending chart
         if (data.dailySpending && data.dailySpending.length > 0) {
@@ -1259,6 +1288,7 @@ async function searchRestaurants(query) {
         return;
     }
 
+    setLoadingMessage('restaurants', query);
     showPage('loading');
 
     try {
@@ -1314,6 +1344,9 @@ async function loadFoodGallery() {
 // Initialize
 updateUIForAuth();
 loadFoodGallery();
+
+// Keep the last analysis HTML for downstream prompts
+window.lastAnalysisHtml = window.lastAnalysisHtml || null;
 
 // Maps Integration (Google primary, Leaflet fallback)
 let mapInstance = null;
@@ -1399,6 +1432,234 @@ function loadLeaflet() {
     });
 }
 
+// ------- Recommendations (Coffee spend -> menu alternatives) -------
+
+// Extract a compact menu catalog from restaurants data
+function extractMenuCatalog(restaurants) {
+    const nameKeys = ['itemName','productName','dishName','title','name','label','sectionTitle','shortName','longName','heading'];
+    const priceKeys = ['price','priceTagline','formattedPrice','priceText','amount','value','priceCents','centAmount','cents'];
+
+    const parsePriceNumber = (val) => {
+        if (val == null) return null;
+        if (typeof val === 'number') {
+            // If integer and reasonably small, treat as cents (e.g., 2124 => 21.24)
+            if (Number.isInteger(val) && val >= 100 && val <= 100000) return val / 100;
+            return val >= 0 ? Number(val) : null;
+        }
+        if (typeof val === 'string') {
+            let s = val.trim();
+            // Detect if value denotes cents explicitly
+            const mentionsCents = /\bcent(s)?\b/i.test(s) || /\bcents?\b/i.test(s);
+            // Keep only digits and separators for parsing logic
+            let numeric = s.replace(/[^0-9.,]/g, '');
+            if (!numeric) return null;
+            // If both separators present and last comma after last dot => comma is decimal
+            const lastDot = numeric.lastIndexOf('.')
+            const lastComma = numeric.lastIndexOf(',');
+            if (lastComma > -1 && (lastDot === -1 || lastComma > lastDot)) {
+                // European style: use comma as decimal, remove dots as thousand
+                numeric = numeric.replace(/\./g, '').replace(/,/g, '.');
+            } else if (numeric.includes(',') && !numeric.includes('.')) {
+                // Only comma present: treat as decimal
+                numeric = numeric.replace(/,/g, '.');
+            } else {
+                // Dot is decimal; remove thousands commas
+                numeric = numeric.replace(/,/g, '');
+            }
+            const n = parseFloat(numeric);
+            if (!isFinite(n)) return null;
+            // If the string mentions cents or looks like an integer with 3–5 digits, treat as cents
+            if (mentionsCents || (/^\d{3,5}$/.test(numeric) && Math.abs(n) >= 100)) {
+                return n / 100;
+            }
+            return n;
+        }
+        if (typeof val === 'object') {
+            for (const k of ['price','amount','value','centAmount','cents','formatted','text']) {
+                if (val[k] != null) {
+                    const r = parsePriceNumber(val[k]);
+                    if (r != null) return r;
+                }
+            }
+        }
+        return null;
+    };
+
+    const getName = (obj) => {
+        for (const k of nameKeys) {
+            const v = obj[k];
+            if (typeof v === 'string' && v.trim()) return v.trim();
+        }
+        return '';
+    };
+
+    const getPrice = (obj) => {
+        for (const k of priceKeys) {
+            if (obj[k] != null) {
+                const n = parsePriceNumber(obj[k]);
+                if (n != null) return n;
+            }
+        }
+        return null;
+    };
+
+    const results = [];
+    const visit = (node, pushItem) => {
+        if (!node) return;
+        if (typeof node === 'string') {
+            try {
+                const parsed = JSON.parse(node);
+                visit(parsed, pushItem);
+            } catch (_) {}
+            return;
+        }
+        if (Array.isArray(node)) { node.forEach(n => visit(n, pushItem)); return; }
+        if (typeof node === 'object') {
+            const name = getName(node);
+            const price = getPrice(node);
+            if (name && price != null) pushItem({ name, price });
+            // Explore common containers
+            ['sectionItems','items','menuItems','products','entries','children','sections','categories','groups','cards','catalogItems','menu','menus','data'].forEach(k => visit(node[k], pushItem));
+            for (const v of Object.values(node)) {
+                if (typeof v === 'string') {
+                    try { visit(JSON.parse(v), pushItem); } catch (_) {}
+                }
+            }
+        }
+    };
+
+    for (const r of restaurants || []) {
+        const allItems = [];
+        visit(r, (it) => allItems.push(it));
+        const dedup = new Map();
+        allItems.forEach(it => {
+            if (typeof it.price !== 'number' || !isFinite(it.price)) return;
+            // Clamp unrealistic menu prices; treat values above $200 as likely bad parse
+            if (it.price < 25 || it.price > 200) return;
+            const key = `${it.name.toLowerCase().trim()}|${it.price.toFixed(2)}`;
+            if (!dedup.has(key)) dedup.set(key, it);
+        });
+        const items = Array.from(dedup.values()).slice(0, 200);
+        if (items.length) results.push({ name: r.title || r.name || 'Restaurant', items });
+    }
+    return results.slice(0, 10);
+}
+
+async function requestRecommendations() {
+    const recommendationsContainer = document.getElementById('recommendationsContainer');
+    const recommendationsContent = document.getElementById('recommendationsContent');
+
+    // Ensure we have an analysis HTML: use cached one or fetch latest processed
+    if (!window.lastAnalysisHtml) {
+        try {
+            window.lastAnalysisHtml = await ensureLastAnalysisLoaded();
+        } catch (e) {
+            showError('No analyzed statement found. Please analyze a statement first.');
+            return;
+        }
+    }
+    if (!window.restaurantsData || !window.restaurantsData.length) {
+        showError('Search restaurants first to build menu recommendations.');
+        return;
+    }
+
+    // Build menu catalog
+    const catalog = extractMenuCatalog(window.restaurantsData);
+    if (!catalog.length) {
+        showError('No menu items with prices found to generate recommendations.');
+        return;
+    }
+
+    // Show container with a thinking spinner
+    recommendationsContainer.style.display = 'block';
+    // Smoothly bring the recommendations into view (below the map container)
+    try {
+        const target = recommendationsContainer;
+        const y = target.getBoundingClientRect().top + window.scrollY - 12;
+        window.scrollTo({ top: y, behavior: 'smooth' });
+    } catch {}
+    recommendationsContent.innerHTML = `
+        <div class="loading-container" style="padding: 30px 10px;">
+            <div class="spinner large-spinner"></div>
+            <p>Thinking… crafting your meal alternatives</p>
+        </div>
+    `;
+
+    try {
+        const data = await apiCall('/recommendations/coffee', {
+            method: 'POST',
+            body: JSON.stringify({
+                analysisHtml: window.lastAnalysisHtml,
+                restaurants: catalog
+            })
+        });
+        renderRecommendationsTable(data.recommendations);
+        // Ensure final content is visible after render
+        try {
+            const target = recommendationsContainer;
+            const y = target.getBoundingClientRect().top + window.scrollY - 12;
+            window.scrollTo({ top: y, behavior: 'smooth' });
+        } catch {}
+    } catch (err) {
+        console.error('Recommendations failed:', err);
+        showError('Failed to get recommendations: ' + (err.message || err));
+        recommendationsContainer.style.display = 'none';
+    }
+}
+
+// Pull the latest processed analysis from the inbox if none is cached
+async function ensureLastAnalysisLoaded() {
+    const inbox = await apiCall('/inbox'); // { documents: [...] }
+    if (!inbox || !Array.isArray(inbox.documents)) throw new Error('No inbox');
+    // Already sorted by receivedAt desc on backend; find first processed
+    const latestProcessed = inbox.documents.find(d => d.processed);
+    if (!latestProcessed) throw new Error('No processed documents');
+    const res = await apiCall(`/result/${latestProcessed.id}`);
+    if (!res || !res.analysis) throw new Error('No analysis');
+    return res.analysis;
+}
+
+function renderRecommendationsTable(rec) {
+    const recommendationsContainer = document.getElementById('recommendationsContainer');
+    const recommendationsContent = document.getElementById('recommendationsContent');
+    if (!rec || !Array.isArray(rec.allocations) || rec.allocations.length === 0) {
+        recommendationsContent.innerHTML = '<p style="color: var(--gemini-gray);">No recommendations available.</p>';
+        recommendationsContainer.style.display = 'block';
+        return;
+    }
+
+    const currency = '$';
+    const rows = rec.allocations.map(a => {
+        const itemsList = a.items.map(it => `${escapeHtml(it.name)} <span style="color:#5F6368">(${currency}${it.price.toFixed(2)})</span>`).join('<br>');
+        return `
+            <tr>
+                <td style="font-weight:600;">${escapeHtml(a.restaurant)}</td>
+                <td>${itemsList}</td>
+                <td style="text-align:right; font-weight:600;">${currency}${(a.subtotal || 0).toFixed(2)}</td>
+            </tr>
+        `;
+    }).join('');
+
+    recommendationsContent.innerHTML = `
+        <div style="margin-bottom: 10px; color: #5F6368;">Detected coffee spend: <strong>${currency}${(rec.coffeeSpend || 0).toFixed(2)}</strong></div>
+        <table class="inbox-table" style="margin-top: 10px;">
+            <thead>
+                <tr>
+                    <th>Restaurant</th>
+                    <th>Items</th>
+                    <th style="text-align:right;">Subtotal</th>
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>
+        ${rec.notes ? `<div style="margin-top: 12px; color: #5F6368; font-size: 0.95em;">${escapeHtml(rec.notes)}</div>` : ''}
+    `;
+    recommendationsContainer.style.display = 'block';
+}
+
+// Wire up Recommend button
+document.getElementById('recommendBtn').addEventListener('click', requestRecommendations);
+
 // Show Map Button Click Handler
 document.getElementById('showMapBtn').addEventListener('click', async () => {
     if (!window.restaurantsData || window.restaurantsData.length === 0) {
@@ -1410,8 +1671,7 @@ document.getElementById('showMapBtn').addEventListener('click', async () => {
     const container = document.getElementById('restaurantMapContainer');
     container.style.display = 'block';
 
-    // Smooth scroll
-    container.scrollIntoView({ behavior: 'smooth' });
+    // Do not auto-scroll on map display; keep focus on current position
 
     try {
         await ensureMapsLibraryLoaded();
@@ -1429,14 +1689,19 @@ async function initializeMap() {
 
 // Provider-specific implementations
 async function initializeMapGoogle() {
+    if (!window.google || !google.maps) {
+        throw new Error('Google Maps library not available');
+    }
     const mapDiv = document.getElementById('restaurantMap');
+    // Clear any previous placeholder content
+    mapDiv.innerHTML = '';
 
     // Clear previous markers
     restaurantMarkers.forEach(marker => marker.setMap && marker.setMap(null));
     restaurantMarkers = [];
 
-    // Get user location
-    const userLocation = await geocodeAddressGoogle(currentUser.address);
+    // Get user location with fallback strategies
+    const userLocation = await getUserLocationForMap();
     if (!userLocation) {
         showError('Could not locate your address on the map');
         return;
@@ -1452,6 +1717,18 @@ async function initializeMapGoogle() {
         });
     } else if (mapInstance.setCenter) {
         mapInstance.setCenter(userLocation);
+    }
+
+    // Force a resize in case the map div was previously hidden
+    try {
+        if (google && google.maps && google.maps.event && mapInstance) {
+            setTimeout(() => {
+                google.maps.event.trigger(mapInstance, 'resize');
+                mapInstance.setCenter(userLocation);
+            }, 50);
+        }
+    } catch (e) {
+        console.warn('Map resize trigger failed:', e);
     }
 
     if (userMarker && userMarker.setMap) userMarker.setMap(null);
@@ -1514,8 +1791,38 @@ async function initializeMapGoogle() {
     mapInstance.fitBounds(bounds);
 }
 
+// Best-effort user location resolution for Google Maps
+async function getUserLocationForMap() {
+    // 1) Try Google geocoder if available
+    try {
+        const byGoogle = await geocodeAddressGoogle(currentUser.address);
+        if (byGoogle) return byGoogle;
+    } catch (e) {
+        console.warn('Google geocode failed:', e);
+    }
+    // 2) Fallback to Nominatim
+    try {
+        const byOsm = await geocodeAddressLeaflet(currentUser.address);
+        if (byOsm) return byOsm;
+    } catch (e) {
+        console.warn('OSM geocode failed:', e);
+    }
+    // 3) Use first restaurant with coordinates
+    if (Array.isArray(window.restaurantsData)) {
+        for (const r of window.restaurantsData) {
+            const loc = r && r.location;
+            if (!loc) continue;
+            if (loc.latitude && loc.longitude) return { lat: parseFloat(loc.latitude), lng: parseFloat(loc.longitude) };
+            if (loc.lat && loc.lng) return { lat: parseFloat(loc.lat), lng: parseFloat(loc.lng) };
+        }
+    }
+    // 4) Fallback to default city center (Ottawa, CA ~ as example)
+    return { lat: 45.4215, lng: -75.6972 };
+}
+
 async function initializeMapLeaflet() {
     const mapDiv = document.getElementById('restaurantMap');
+    mapDiv.innerHTML = '';
 
     // Clear previous markers
     restaurantMarkers.forEach(marker => marker.remove && marker.remove());

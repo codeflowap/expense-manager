@@ -728,7 +728,7 @@
         <div id="loadingPage" class="page">
             <div class="loading-container">
                 <div class="spinner large-spinner"></div>
-                <p>Analyzing your statement... this may take a moment.</p>
+                <p id="loadingMessage">Thinking… working on it.</p>
             </div>
         </div>
 
@@ -802,10 +802,13 @@
                     </tbody>
                 </table>
 
-                <!-- See on Maps Button -->
-                <div style="text-align: center; margin-top: 20px;">
+                <!-- Action Row: Map + Recommendations -->
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 20px; gap: 12px;">
                     <button id="showMapBtn" style="background: none; border: none; color: #4285F4; font-weight: bold; font-size: 16px; cursor: pointer; padding: 10px 20px;">
                         See on Maps
+                    </button>
+                    <button id="recommendBtn" class="btn btn-primary" style="margin-top: 0;">
+                        Suggest Alternatives
                     </button>
                 </div>
             </div>
@@ -815,6 +818,14 @@
                 <h2 style="margin-bottom: 20px;">Restaurant Locations</h2>
                 <div id="restaurantMap" style="width: 100%; height: 500px; border-radius: 8px; overflow: hidden;">
                     <!-- Google Map will be loaded here -->
+                </div>
+            </div>
+
+            <!-- Recommendations Container -->
+            <div class="card" id="recommendationsContainer" style="margin-top: 30px; display: none;">
+                <h2 style="margin-bottom: 16px;">Suggested Alternatives</h2>
+                <div id="recommendationsContent">
+                    <!-- Filled dynamically -->
                 </div>
             </div>
         </div>

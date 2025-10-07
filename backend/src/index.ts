@@ -9,6 +9,7 @@ import documentRoutes from './routes/document.routes';
 import webhookRoutes from './routes/webhook.routes';
 import restaurantRoutes from './routes/restaurant.routes';
 import configRoutes from './routes/config.routes';
+import recommendationRoutes from './routes/recommendation.routes';
 
 dotenv.config();
 
@@ -30,6 +31,7 @@ app.use('/api', documentRoutes);
 app.use('/api/webhook', webhookRoutes);
 app.use('/api/restaurants', restaurantRoutes);
 app.use('/api/config', configRoutes);
+app.use('/api/recommendations', recommendationRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
