@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart Expense Manager</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
 
@@ -801,13 +803,20 @@
                         <!-- Populated by JavaScript -->
                     </tbody>
                 </table>
+
+                <!-- See on Maps Button -->
+                <div style="text-align: center; margin-top: 20px;">
+                    <button id="showMapBtn" style="background: none; border: none; color: #4285F4; font-weight: bold; font-size: 16px; cursor: pointer; padding: 10px 20px;">
+                        See on Maps
+                    </button>
+                </div>
             </div>
 
             <!-- Map Container -->
             <div class="card" id="restaurantMapContainer" style="margin-top: 30px; display: none;">
-                <h2 style="margin-bottom: 20px;">Restaurant Locations & Distances</h2>
-                <div id="restaurantMapContent" style="min-height: 300px;">
-                    <!-- Map or distance info will be populated here -->
+                <h2 style="margin-bottom: 20px;">Restaurant Locations</h2>
+                <div id="restaurantMap" style="width: 100%; height: 500px; border-radius: 8px; overflow: hidden;">
+                    <!-- Google Map will be loaded here -->
                 </div>
             </div>
         </div>
@@ -815,5 +824,6 @@
     </main>
 
     <script src="app.js"></script>
+    <script src="app-map.js"></script>
 </body>
 </html>

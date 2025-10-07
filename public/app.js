@@ -94,13 +94,330 @@ function showModal(title, data) {
 
     modalTitle.textContent = title;
 
-    // Format data based on type
+    // Format data based on type and content
     let content = '';
-    if (Array.isArray(data)) {
+
+    // Helper: safely parse JSON if string
+    const tryParseJson = (val) => {
+        if (typeof val !== 'string') return val;
+        try {
+            return JSON.parse(val);
+        } catch (e) {
+            return val;
+        }
+    };
+
+    // Helper: extract a name from various review item shapes (deep search)
+    const getAuthorName = (item) => {
+        if (!item || typeof item !== 'object') return '';
+        const queue = [item];
+        const visited = new Set();
+        const nameKeys = new Set(['userName','author','name','reviewerName','user','displayName','authorName','username','fullName','eaterName']);
+        while (queue.length) {
+            const node = queue.shift();
+            if (!node || typeof node !== 'object' || visited.has(node)) continue;
+            visited.add(node);
+            const first = node.firstName || node.givenName || node.first || '';
+            const last = node.lastName || node.familyName || node.last || '';
+            if (first || last) return `${String(first).trim()} ${String(last).trim()}`.trim();
+            for (const [k, v] of Object.entries(node)) {
+                if (nameKeys.has(k) && typeof v === 'string' && v.trim()) return v.trim();
+                if (v && typeof v === 'object') queue.push(v);
+                if (Array.isArray(v)) v.forEach(x => queue.push(x));
+            }
+        }
+        return '';
+    };
+
+    // Helper: flatten reviews from various shapes
+    const normalizeReviews = (val) => {
+        const v = tryParseJson(val);
+        if (Array.isArray(v)) return v;
+        if (v && typeof v === 'object') {
+            if (Array.isArray(v.reviews)) return v.reviews;
+            if (Array.isArray(v.storeReviews)) return v.storeReviews;
+            if (Array.isArray(v.featuredReviews)) return v.featuredReviews;
+            if (Array.isArray(v.items)) return v.items;
+            if (Array.isArray(v.results)) return v.results;
+            if (v.data && Array.isArray(v.data.reviews)) return v.data.reviews;
+            if (v.data && Array.isArray(v.data.items)) return v.data.items;
+            for (const key of Object.keys(v)) {
+                if (Array.isArray(v[key])) {
+                    const arr = v[key];
+                    if (arr.length && (typeof arr[0] === 'object')) return arr;
+                }
+            }
+            return [v];
+        }
+        return [];
+    };
+
+    // Helper: flatten menu items from a variety of shapes
+    const normalizeMenuItems = (val) => {
+        const v = tryParseJson(val);
+        const out = [];
+        // Key sets to detect likely item objects
+        const itemNameKeys = new Set(['itemName','productName','dishName','title','name','label','sectionTitle','shortName','longName','heading']);
+        const itemPriceKeys = new Set(['price','priceTagline','formattedPrice','priceText','amount','value','priceCents','centAmount','cents']);
+
+        const formatPriceValue = (value, keyHint = '') => {
+            if (value == null) return '';
+            // If it's already a string with currency or decimal, keep it
+            if (typeof value === 'string') {
+                const trimmed = value.trim();
+                if (!trimmed) return '';
+                // If it's purely digits and likely cents, normalize
+                if (/^\d+$/.test(trimmed)) {
+                    const num = parseInt(trimmed, 10);
+                    const isCents = keyHint.toLowerCase().includes('cent') || num >= 100;
+                    const dollars = isCents ? num / 100 : num;
+                    return `$${dollars.toFixed(2)}`;
+                }
+                // Leave as-is (e.g., CA$14.95)
+                return trimmed;
+            }
+            if (typeof value === 'number') {
+                const isCents = keyHint.toLowerCase().includes('cent') || (Number.isInteger(value) && value >= 100);
+                const dollars = isCents ? value / 100 : value;
+                return `$${dollars.toFixed(2)}`;
+            }
+            if (typeof value === 'object') {
+                // Common nested fields
+                if (value.price != null) return formatPriceValue(value.price, 'price');
+                if (value.amount != null) return formatPriceValue(value.amount, 'amount');
+                if (value.value != null) return formatPriceValue(value.value, 'value');
+                if (value.centAmount != null) return formatPriceValue(value.centAmount, 'centAmount');
+                if (value.cents != null) return formatPriceValue(value.cents, 'cents');
+                if (value.text) return String(value.text);
+                if (value.formatted) return String(value.formatted);
+                if (value.formattedPrice) return String(value.formattedPrice);
+            }
+            return '';
+        };
+
+        const extractItemFields = (obj) => {
+            let name = obj.itemName || obj.title || obj.name || obj.label || obj.sectionTitle || '';
+            let description = obj.itemDescription || obj.description || obj.subtitle || obj.sectionSubtitle || '';
+            let price = '';
+            // Prefer priceTagline if present (object or string)
+            if (obj.priceTagline !== undefined) price = formatPriceValue(obj.priceTagline, 'priceTagline');
+            // Fallbacks
+            if (!price && obj.price !== undefined) price = formatPriceValue(obj.price, 'price');
+            if (!price && obj.formattedPrice !== undefined) price = formatPriceValue(obj.formattedPrice, 'formattedPrice');
+            if (!price && obj.priceText !== undefined) price = formatPriceValue(obj.priceText, 'priceText');
+
+            if (!name || !description || !price) {
+                const queue = [obj];
+                const visited = new Set();
+                const nameKeys = new Set(['itemName','productName','dishName','title','name','label','sectionTitle','shortName','longName','heading']);
+                const descKeys = new Set(['itemDescription','description','subtitle','sectionSubtitle','details','summary','body','note']);
+                const priceKeys = new Set(['price','priceTagline','formattedPrice','priceText','amount','value','priceCents']);
+                while (queue.length) {
+                    const node = queue.shift();
+                    if (!node || typeof node !== 'object' || visited.has(node)) continue;
+                    visited.add(node);
+                    for (const [k, v] of Object.entries(node)) {
+                        if (!name && nameKeys.has(k) && typeof v === 'string' && v.trim()) name = v.trim();
+                        if (!description && descKeys.has(k) && typeof v === 'string' && v.trim()) description = v.trim();
+                        if (!price && priceKeys.has(k)) {
+                            const p = formatPriceValue(v, k);
+                            if (p) price = p;
+                        }
+                        if (v && typeof v === 'object') queue.push(v);
+                        if (Array.isArray(v)) v.forEach(x => queue.push(x));
+                    }
+                }
+            }
+            return { name, description, price };
+        };
+
+        const visit = (node) => {
+            if (!node) return;
+            // If it's a JSON string, parse and continue
+            if (typeof node === 'string') {
+                const parsed = tryParseJson(node);
+                if (parsed && (Array.isArray(parsed) || typeof parsed === 'object')) {
+                    visit(parsed);
+                }
+                return;
+            }
+            if (Array.isArray(node)) { node.forEach(n => visit(n)); return; }
+            if (typeof node === 'object') {
+                // If the object looks like a single menu item, extract it
+                const keys = Object.keys(node);
+                const likelyItem = keys.some(k => itemNameKeys.has(k) || itemPriceKeys.has(k));
+                if (likelyItem) {
+                    const { name, description, price } = extractItemFields(node);
+                    // Only push if it looks like a real item (needs price or description, not just title)
+                    if ((price || description) || (name && (node.price != null || node.priceTagline != null))) {
+                        out.push({ name: name || 'Menu Item', description, price });
+                    }
+                }
+                // Traverse common containers (each individually)
+                visit(node.sectionItems);
+                visit(node.items);
+                visit(node.menuItems);
+                visit(node.products);
+                visit(node.entries);
+                visit(node.children);
+                visit(node.sections);
+                visit(node.categories);
+                visit(node.groups);
+                visit(node.cards);
+                visit(node.catalogItems);
+                if (node.menu) visit(node.menu);
+                // Also scan any string-encoded JSON subfields
+                for (const val of Object.values(node)) {
+                    if (typeof val === 'string') {
+                        const parsed = tryParseJson(val);
+                        if (parsed && (Array.isArray(parsed) || typeof parsed === 'object')) visit(parsed);
+                    }
+                }
+            }
+        };
+        visit(v);
+        // Deduplicate items by name|description|price
+        const seen = new Set();
+        const deduped = [];
+        for (const it of out) {
+            const key = `${(it.name||'').toLowerCase().trim()}|${(it.description||'').toLowerCase().trim()}|${it.price||''}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                deduped.push(it);
+            }
+        }
+        return deduped;
+    };
+
+    // Check if this is menu data
+    if (title.includes('Menu')) {
+        const items = normalizeMenuItems(data);
+        console.log('Menu data normalized:', Array.isArray(items) ? items.length + ' items' : typeof items);
+        content = '<div style="display: grid; gap: 12px;">';
+        let hasItems = false;
+
+        items.forEach((item, idx) => {
+            if (typeof item === 'object' && item !== null) {
+                console.log(`Menu item ${idx} keys:`, Object.keys(item));
+
+                // Try multiple possible field names
+                const name = item.name || item.itemName || item.title || item.label || item.sectionTitle || '';
+                const description = item.description || item.itemDescription || item.subtitle || item.sectionSubtitle || '';
+                const price = item.price || item.priceTagline || item.formattedPrice || item.priceText || '';
+                
+                // Skip entries with no useful data
+                if (!name && !description && !price) return;
+                // Mark that we have something to show
+                hasItems = true;
+                const displayName = name || 'Menu Item';
+
+                content += `
+                    <div style="background: white; padding: 18px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-left: 4px solid #667eea;">
+                        <h4 style="margin: 0 0 6px 0; font-size: 16px; font-weight: 600; color: #333;">${escapeHtml(displayName)}</h4>
+                        ${description ? `<p style="margin: 0 0 8px 0; font-size: 14px; color: #666; line-height: 1.4;">${escapeHtml(description)}</p>` : ''}
+                        ${price ? `<div style="font-size: 15px; font-weight: 600; color: #667eea;">💰 ${escapeHtml(price)}</div>` : ''}
+                    </div>
+                `;
+            }
+        });
+
+        if (!hasItems) {
+            content = '<p style="color: var(--gemini-gray);">No menu items available</p>';
+        }
+
+        content += '</div>';
+    }
+    // Check if this is reviews data
+    else if (title.includes('Reviews') && (Array.isArray(data) || typeof data === 'object')) {
+        console.log('Reviews raw data:', JSON.stringify(data, null, 2));
+        const reviews = normalizeReviews(data);
+
+        // Parse numeric rating robustly from various formats
+        const parseRating = (val) => {
+            if (typeof val === 'number' && isFinite(val)) return Math.max(0, Math.min(5, val));
+            if (typeof val === 'string') {
+                const s = val.trim();
+                // Count star glyphs like ★★★★☆
+                const full = (s.match(/★/g) || []).length;
+                if (full) return Math.max(0, Math.min(5, full));
+                // Extract like 4.5/5 or 4.5 out of 5
+                const m = s.match(/(\d+(?:\.\d+)?)(?=\s*(?:\/\s*5|\s*out\s*of\s*5)?)/i);
+                if (m) return Math.max(0, Math.min(5, parseFloat(m[1])));
+                // Plain integer string
+                const n = Number(s);
+                if (!Number.isNaN(n)) return Math.max(0, Math.min(5, n));
+            }
+            if (val && typeof val === 'object') {
+                if (typeof val.value === 'number') return Math.max(0, Math.min(5, val.value));
+                if (typeof val.rating === 'number') return Math.max(0, Math.min(5, val.rating));
+            }
+            return 0;
+        };
+
+        // Render 0–5 stars with full/empty glyphs
+        const createStarRating = (ratingRaw) => {
+            const rating = parseRating(ratingRaw);
+            const fullStars = Math.floor(rating + 1e-6);
+            const emptyStars = 5 - fullStars;
+            let stars = '<span style="color: #FBBC04; letter-spacing: 2px;">';
+            stars += '★'.repeat(fullStars);
+            stars += '</span>';
+            stars += '<span style="color: #E0E0E0; letter-spacing: 2px;">';
+            stars += '★'.repeat(emptyStars);
+            stars += '</span>';
+            return stars;
+        };
+
+        // Check if it's a summary object with rating
+        if (reviews.length === 1 && (reviews[0].rating !== undefined || reviews[0].storeRatingScore !== undefined || reviews[0].stars !== undefined || reviews[0].score !== undefined)) {
+            const review = reviews[0];
+            const rating = parseRating(review.rating || review.storeRatingScore || review.stars || review.score || 0);
+            const count = review.reviewsCount || review.numberOfRatings || 0;
+
+            content = `
+                <div style="background: white; padding: 30px; border-radius: 12px; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                    <div style="font-size: 40px; margin-bottom: 15px;">${createStarRating(rating)}</div>
+                    <div style="font-size: 32px; font-weight: 700; margin-bottom: 8px; color: #333;">${rating.toFixed(1)}</div>
+                    <div style="font-size: 14px; color: #666;">${count} Reviews</div>
+                </div>
+            `;
+        } else {
+            content = '<div style="display: grid; gap: 12px;">';
+            reviews.forEach((review, idx) => {
+                if (typeof review === 'object' && review !== null) {
+                    console.log(`Review ${idx} keys:`, Object.keys(review));
+
+                    const rating = parseRating(review.rating || review.storeRatingScore || review.stars || review.score || review.ratingValue || review.starRating || 0);
+                    const text = review.text || review.comment || review.reviewText || review.message || review.body || review.description || '';
+
+                    // Try more field variations for author name - hide if not found
+                    const author = getAuthorName(review) || review.eaterName || '';
+                    const when = [review.formattedDate, review.timeSinceReview]
+                        .filter(Boolean)
+                        .map(s => String(s))
+                        .join(' • ');
+
+                    content += `
+                        <div style="background: white; padding: 16px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                ${author ? `<span style="font-weight: 600; color: #333; font-size: 14px;">${escapeHtml(author)}</span>` : '<span></span>'}
+                                <span style="font-size: 16px;">${createStarRating(rating)}</span>
+                            </div>
+                            ${when ? `<div style=\"margin: 4px 0 0 0; color: #999; font-size: 12px;\">${escapeHtml(when)}</div>` : ''}
+                            ${text ? `<p style=\"margin: 0; color: #666; line-height: 1.5; font-size: 14px;\">${escapeHtml(text)}</p>` : ''}
+                        </div>
+                    `;
+                }
+            });
+            content += '</div>';
+        }
+    }
+    // Default formatting for other data
+    else if (Array.isArray(data)) {
         if (data.length === 0) {
             content = '<p style="color: var(--gemini-gray);">No data available</p>';
         } else {
-            content = '<ul style="margin: 0; padding-left: 20px;">';
+            content = '<ul style="margin: 0; padding-left: 20px; line-height: 1.8;">';
             data.forEach(item => {
                 if (typeof item === 'object' && item !== null) {
                     content += `<li style="margin-bottom: 10px;"><pre style="margin: 5px 0; white-space: pre-wrap; background: #f5f5f5; padding: 10px; border-radius: 4px;">${JSON.stringify(item, null, 2)}</pre></li>`;
@@ -123,6 +440,36 @@ function showModal(title, data) {
 function closeModal() {
     document.getElementById('modalOverlay').classList.remove('show');
 }
+
+// Safer open helpers to avoid inline string quoting issues
+window.openMenu = function(index) {
+    const r = (window.restaurantsData || [])[index];
+    if (!r) return;
+    const title = `Menu - ${r.title || 'Restaurant'}`;
+    showModal(title, r);
+};
+
+window.openReviews = function(index) {
+    const r = (window.restaurantsData || [])[index];
+    if (!r) return;
+    const payload = r.storeReviews || r;
+    const title = `Reviews - ${r.title || 'Restaurant'}`;
+    showModal(title, payload);
+};
+
+window.openCategories = function(index) {
+    const r = (window.restaurantsData || [])[index];
+    if (!r) return;
+    const title = `Categories - ${r.title || 'Restaurant'}`;
+    showModal(title, r.categories || []);
+};
+
+window.openLocation = function(index) {
+    const r = (window.restaurantsData || [])[index];
+    if (!r) return;
+    const title = `Location - ${r.title || 'Restaurant'}`;
+    showModal(title, r.location || {});
+};
 
 async function apiCall(endpoint, options = {}) {
     const config = {
@@ -814,8 +1161,50 @@ function displayRestaurantResults(data) {
         return;
     }
 
-    // Store restaurant data globally for modal access
-    window.restaurantsData = data.restaurants;
+    // Sanitize categories (remove $/$$ etc.) and store globally
+    const sanitizeCategories = (arr) => {
+        if (!Array.isArray(arr)) return [];
+        return arr
+            .filter(v => typeof v === 'string')
+            .map(s => s.trim())
+            .filter(s => s.length > 0 && !/^\$+$/.test(s));
+    };
+
+    window.restaurantsData = data.restaurants.map(r => ({
+        ...r,
+        categories: sanitizeCategories(r.categories)
+    }));
+
+    // Helpers to decide if data is present for menu/reviews
+    const hasAnyData = (v) => {
+        if (v == null) return false;
+        if (Array.isArray(v)) return v.length > 0;
+        if (typeof v === 'string') {
+            const t = v.trim();
+            if (!t || t === '[]' || t === '{}') return false;
+            return true;
+        }
+        if (typeof v === 'object') return Object.keys(v).length > 0;
+        return false;
+    };
+
+    const hasMenuLike = (r) => {
+        const cands = [r.menu, r.sections, r.menuItems, r.products, r.entries, r.cards];
+        return cands.some(hasAnyData);
+    };
+
+    const hasReviewsLike = (r) => {
+        const primary = r.storeReviews || r.reviews || r.reviewList || r.ratings || r.feedback || r.opinions;
+        if (hasAnyData(primary)) return true;
+        const obj = r.storeReviews || r;
+        if (obj && typeof obj === 'object') {
+            if (Array.isArray(obj.reviews) && obj.reviews.length) return true;
+            if (Array.isArray(obj.items) && obj.items.length) return true;
+            if (Array.isArray(obj.results) && obj.results.length) return true;
+            if (obj.data && ((Array.isArray(obj.data.reviews) && obj.data.reviews.length) || (Array.isArray(obj.data.items) && obj.data.items.length))) return true;
+        }
+        return false;
+    };
 
     data.restaurants.forEach((restaurant, index) => {
         const row = document.createElement('tr');
@@ -823,24 +1212,25 @@ function displayRestaurantResults(data) {
         // Image
         const imgSrc = restaurant.heroImageUrl || 'https://via.placeholder.com/80';
 
-        // Categories - make clickable if available
-        const categoriesCell = restaurant.categories && restaurant.categories.length > 0
-            ? `<span class="clickable-cell" onclick="showModal('Categories - ${escapeHtml(restaurant.title)}', window.restaurantsData[${index}].categories)">View All</span>`
+        // Categories - make clickable if available (using sanitized categories)
+        const hasCategories = Array.isArray(window.restaurantsData[index].categories) && window.restaurantsData[index].categories.length > 0;
+        const categoriesCell = hasCategories
+            ? `<span class="clickable-cell" onclick="openCategories(${index})">View All</span>`
             : 'N/A';
 
-        // Menu - make clickable if available
-        const menuCell = restaurant.menu
-            ? `<span class="clickable-cell" onclick="showModal('Menu - ${escapeHtml(restaurant.title)}', window.restaurantsData[${index}].menu)">View Menu</span>`
+        // Menu - make clickable only if content is detected. Pass whole restaurant to normalize within modal.
+        const menuCell = hasMenuLike(restaurant)
+            ? `<span class="clickable-cell" onclick="openMenu(${index})">View Menu</span>`
             : 'N/A';
 
-        // Reviews - make clickable if available
-        const reviewsCell = restaurant.storeReviews
-            ? `<span class="clickable-cell" onclick="showModal('Reviews - ${escapeHtml(restaurant.title)}', window.restaurantsData[${index}].storeReviews)">View Reviews</span>`
+        // Reviews - make clickable only if content is detected. Prefer storeReviews payload else fall back.
+        const reviewsCell = hasReviewsLike(restaurant)
+            ? `<span class="clickable-cell" onclick="openReviews(${index})">View Reviews</span>`
             : 'N/A';
 
         // Location - make clickable if available
         const locationCell = restaurant.location
-            ? `<span class="clickable-cell" onclick="showModal('Location - ${escapeHtml(restaurant.title)}', window.restaurantsData[${index}].location)">View Location</span>`
+            ? `<span class="clickable-cell" onclick="openLocation(${index})">View Location</span>`
             : 'N/A';
 
         row.innerHTML = `
@@ -924,3 +1314,185 @@ async function loadFoodGallery() {
 // Initialize
 updateUIForAuth();
 loadFoodGallery();
+
+// Google Maps Integration
+let mapInstance = null;
+let userMarker = null;
+let restaurantMarkers = [];
+
+// Show Map Button Click Handler
+document.getElementById('showMapBtn').addEventListener('click', () => {
+    if (!window.restaurantsData || window.restaurantsData.length === 0) {
+        showError('No restaurants to display on map');
+        return;
+    }
+
+    // Show map container
+    document.getElementById('restaurantMapContainer').style.display = 'block';
+
+    // Scroll to map smoothly
+    document.getElementById('restaurantMapContainer').scrollIntoView({ behavior: 'smooth' });
+
+    // Initialize or update map
+    initializeMap();
+});
+
+async function initializeMap() {
+    const mapDiv = document.getElementById('restaurantMap');
+
+    // Clear previous markers
+    restaurantMarkers.forEach(marker => marker.setMap(null));
+    restaurantMarkers = [];
+
+    // Get user location from geocoding the address
+    const userLocation = await geocodeAddress(currentUser.address);
+
+    if (!userLocation) {
+        showError('Could not locate your address on the map');
+        return;
+    }
+
+    // Create map centered on user location
+    if (!mapInstance) {
+        mapInstance = new google.maps.Map(mapDiv, {
+            center: userLocation,
+            zoom: 13,
+            mapTypeControl: true,
+            streetViewControl: false,
+            fullscreenControl: true
+        });
+    } else {
+        mapInstance.setCenter(userLocation);
+    }
+
+    // Add yellow marker for user location
+    if (userMarker) {
+        userMarker.setMap(null);
+    }
+
+    userMarker = new google.maps.Marker({
+        position: userLocation,
+        map: mapInstance,
+        title: 'Your Location',
+        icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            fillColor: '#FBBC04',
+            fillOpacity: 1,
+            strokeColor: '#F9AB00',
+            strokeWeight: 3,
+            scale: 12
+        }
+    });
+
+    // Add user info window
+    const userInfoWindow = new google.maps.InfoWindow({
+        content: `<div style="padding: 8px;"><strong>Your Location</strong><br/>${currentUser.address}</div>`
+    });
+
+    userMarker.addListener('click', () => {
+        userInfoWindow.open(mapInstance, userMarker);
+    });
+
+    // Add red markers for each restaurant
+    for (const restaurant of window.restaurantsData) {
+        if (!restaurant.location) continue;
+
+        let restaurantLocation = null;
+
+        // Try to get coordinates from location data
+        if (restaurant.location.latitude && restaurant.location.longitude) {
+            restaurantLocation = {
+                lat: parseFloat(restaurant.location.latitude),
+                lng: parseFloat(restaurant.location.longitude)
+            };
+        } else if (restaurant.location.lat && restaurant.location.lng) {
+            restaurantLocation = {
+                lat: parseFloat(restaurant.location.lat),
+                lng: parseFloat(restaurant.location.lng)
+            };
+        } else if (restaurant.location.address) {
+            // Geocode the restaurant address
+            restaurantLocation = await geocodeAddress(restaurant.location.address);
+        }
+
+        if (!restaurantLocation) continue;
+
+        // Calculate distance from user
+        const distance = calculateDistance(userLocation, restaurantLocation);
+
+        // Create red marker for restaurant
+        const marker = new google.maps.Marker({
+            position: restaurantLocation,
+            map: mapInstance,
+            title: restaurant.title,
+            icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                fillColor: '#EA4335',
+                fillOpacity: 1,
+                strokeColor: '#C5221F',
+                strokeWeight: 3,
+                scale: 10
+            }
+        });
+
+        // Create info window with restaurant details
+        const infoWindow = new google.maps.InfoWindow({
+            content: `
+                <div style="padding: 10px; max-width: 250px;">
+                    <h3 style="margin: 0 0 8px 0; font-size: 16px; color: #131314;">${restaurant.title}</h3>
+                    <p style="margin: 4px 0; font-size: 13px; color: #5F6368;">📍 ${distance} from you</p>
+                    ${restaurant.location.address ? `<p style="margin: 4px 0; font-size: 12px; color: #5F6368;">${restaurant.location.address}</p>` : ''}
+                </div>
+            `
+        });
+
+        marker.addListener('click', () => {
+            infoWindow.open(mapInstance, marker);
+        });
+
+        restaurantMarkers.push(marker);
+    }
+
+    // Adjust map bounds to show all markers
+    const bounds = new google.maps.LatLngBounds();
+    bounds.extend(userLocation);
+    restaurantMarkers.forEach(marker => bounds.extend(marker.getPosition()));
+    mapInstance.fitBounds(bounds);
+}
+
+// Geocode address to coordinates
+async function geocodeAddress(address) {
+    return new Promise((resolve) => {
+        const geocoder = new google.maps.Geocoder();
+        geocoder.geocode({ address: address }, (results, status) => {
+            if (status === 'OK' && results[0]) {
+                resolve({
+                    lat: results[0].geometry.location.lat(),
+                    lng: results[0].geometry.location.lng()
+                });
+            } else {
+                console.error('Geocoding failed for address:', address, status);
+                resolve(null);
+            }
+        });
+    });
+}
+
+// Calculate distance between two lat/lng points (in km)
+function calculateDistance(point1, point2) {
+    const R = 6371; // Earth's radius in km
+    const dLat = (point2.lat - point1.lat) * Math.PI / 180;
+    const dLng = (point2.lng - point1.lng) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(point1.lat * Math.PI / 180) * Math.cos(point2.lat * Math.PI / 180) *
+              Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const distance = R * c;
+
+    // Format distance
+    if (distance < 1) {
+        return `${Math.round(distance * 1000)}m`;
+    } else {
+        return `${distance.toFixed(1)}km`;
+    }
+}
