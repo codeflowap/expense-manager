@@ -1559,8 +1559,8 @@ function extractMenuCatalog(restaurants, query = '') {
         const dedup = new Map();
         allItems.forEach(it => {
             if (typeof it.price !== 'number' || !isFinite(it.price)) return;
-            // Clamp unrealistic menu prices; treat values above $200 as likely bad parse
-            if (it.price < 25 || it.price > 200) return;
+            // Clamp unrealistic menu prices; treat values above $200 or below $1 as likely bad parse
+            if (it.price < 1 || it.price > 200) return;
             const nameLc = String(it.name || '').toLowerCase();
             const descLc = String(it.description || '').toLowerCase();
             // Skip obvious beverages

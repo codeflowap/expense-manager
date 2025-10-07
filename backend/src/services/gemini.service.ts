@@ -186,7 +186,7 @@ Input B is a list of restaurants with their menu items and numeric prices in dol
 There are exactly ${restaurantCount} restaurants available: ${restaurantNames}.
 
 Task:
-- Recommend a basket of menu items (each priced at least $25) drawn from ACROSS THE PROVIDED RESTAURANTS to best match the coffee spend.
+- Recommend a basket of menu items drawn from ACROSS THE PROVIDED RESTAURANTS to best match the coffee spend.
 - By default, use ALL ${restaurantCount} restaurants: include at least one item from EACH restaurant (${restaurantNames}).
 - If using all restaurants cannot get within $1 of the coffee spend due to menu constraints, clearly state this in notes and fall back to using 2 restaurants; if still impossible, fall back to a single restaurant as a last resort.
 - Systematically search combinations while prioritizing the option that MINIMIZES |sum - coffeeSpend|.
