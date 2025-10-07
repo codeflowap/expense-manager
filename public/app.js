@@ -1789,6 +1789,22 @@ async function initializeMapGoogle() {
     bounds.extend(userLocation);
     restaurantMarkers.forEach(marker => bounds.extend(marker.getPosition()));
     mapInstance.fitBounds(bounds);
+
+    // Verify that Google actually rendered. If not, fall back to Leaflet automatically.
+    setTimeout(async () => {
+        try {
+            const hasGm = !!mapDiv.querySelector('.gm-style');
+            const sized = mapDiv.offsetWidth > 0 && mapDiv.offsetHeight > 0;
+            if (!hasGm || !sized) {
+                console.warn('Google map did not render; falling back to Leaflet.');
+                await loadLeaflet();
+                mapsProvider = 'leaflet';
+                await initializeMapLeaflet();
+            }
+        } catch (e) {
+            console.warn('Map render check failed:', e);
+        }
+    }, 800);
 }
 
 // Best-effort user location resolution for Google Maps
