@@ -34,6 +34,12 @@ function showPage(pageName) {
     }
 }
 
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 // Toast Notification System
 function showToast(message, type = 'success') {
     const container = document.getElementById('toastContainer');
@@ -78,6 +84,44 @@ function showError(message) {
 
 function showSuccess(message) {
     showToast(message, 'success');
+}
+
+// Modal Functions
+function showModal(title, data) {
+    const modal = document.getElementById('modalOverlay');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalBody = document.getElementById('modalBody');
+
+    modalTitle.textContent = title;
+
+    // Format data based on type
+    let content = '';
+    if (Array.isArray(data)) {
+        if (data.length === 0) {
+            content = '<p style="color: var(--gemini-gray);">No data available</p>';
+        } else {
+            content = '<ul style="margin: 0; padding-left: 20px;">';
+            data.forEach(item => {
+                if (typeof item === 'object' && item !== null) {
+                    content += `<li style="margin-bottom: 10px;"><pre style="margin: 5px 0; white-space: pre-wrap; background: #f5f5f5; padding: 10px; border-radius: 4px;">${JSON.stringify(item, null, 2)}</pre></li>`;
+                } else {
+                    content += `<li style="margin-bottom: 5px;">${escapeHtml(String(item))}</li>`;
+                }
+            });
+            content += '</ul>';
+        }
+    } else if (typeof data === 'object' && data !== null) {
+        content = `<pre style="white-space: pre-wrap; word-wrap: break-word; background: #f5f5f5; padding: 15px; border-radius: 4px; margin: 0;">${JSON.stringify(data, null, 2)}</pre>`;
+    } else {
+        content = `<p>${escapeHtml(String(data))}</p>`;
+    }
+
+    modalBody.innerHTML = content;
+    modal.classList.add('show');
+}
+
+function closeModal() {
+    document.getElementById('modalOverlay').classList.remove('show');
 }
 
 async function apiCall(endpoint, options = {}) {
@@ -745,6 +789,14 @@ document.getElementById('logoutBtn').addEventListener('click', () => {
     showSuccess('Logged out successfully!');
 });
 
+// Modal Close
+document.getElementById('modalClose').addEventListener('click', closeModal);
+document.getElementById('modalOverlay').addEventListener('click', (e) => {
+    if (e.target.id === 'modalOverlay') {
+        closeModal();
+    }
+});
+
 // Display Restaurant Results
 function displayRestaurantResults(data) {
     console.log('Restaurant search results:', data);
@@ -762,24 +814,42 @@ function displayRestaurantResults(data) {
         return;
     }
 
-    data.restaurants.forEach(restaurant => {
+    // Store restaurant data globally for modal access
+    window.restaurantsData = data.restaurants;
+
+    data.restaurants.forEach((restaurant, index) => {
         const row = document.createElement('tr');
 
         // Image
         const imgSrc = restaurant.heroImageUrl || 'https://via.placeholder.com/80';
 
-        // Categories
-        const categories = Array.isArray(restaurant.categories)
-            ? restaurant.categories.slice(0, 3).join(', ')
-            : (restaurant.categories || 'N/A');
+        // Categories - make clickable if available
+        const categoriesCell = restaurant.categories && restaurant.categories.length > 0
+            ? `<span class="clickable-cell" onclick="showModal('Categories - ${escapeHtml(restaurant.title)}', window.restaurantsData[${index}].categories)">View All</span>`
+            : 'N/A';
+
+        // Menu - make clickable if available
+        const menuCell = restaurant.menu
+            ? `<span class="clickable-cell" onclick="showModal('Menu - ${escapeHtml(restaurant.title)}', window.restaurantsData[${index}].menu)">View Menu</span>`
+            : 'N/A';
+
+        // Reviews - make clickable if available
+        const reviewsCell = restaurant.storeReviews
+            ? `<span class="clickable-cell" onclick="showModal('Reviews - ${escapeHtml(restaurant.title)}', window.restaurantsData[${index}].storeReviews)">View Reviews</span>`
+            : 'N/A';
+
+        // Location - make clickable if available
+        const locationCell = restaurant.location
+            ? `<span class="clickable-cell" onclick="showModal('Location - ${escapeHtml(restaurant.title)}', window.restaurantsData[${index}].location)">View Location</span>`
+            : 'N/A';
 
         row.innerHTML = `
             <td><img src="${imgSrc}" class="restaurant-img" alt="${restaurant.title}"></td>
             <td><strong>${restaurant.title || 'Unknown'}</strong></td>
-            <td>${categories}</td>
-            <td>${restaurant.menu ? 'Available' : 'N/A'}</td>
-            <td>${restaurant.storeReviews ? 'Available' : 'N/A'}</td>
-            <td>${restaurant.location?.address || 'N/A'}</td>
+            <td>${categoriesCell}</td>
+            <td>${menuCell}</td>
+            <td>${reviewsCell}</td>
+            <td>${locationCell}</td>
         `;
 
         tbody.appendChild(row);

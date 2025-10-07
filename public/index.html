@@ -537,6 +537,14 @@
                 opacity: 1;
             }
         }
+        .clickable-cell {
+            cursor: pointer;
+            color: var(--gemini-blue);
+            text-decoration: underline;
+        }
+        .clickable-cell:hover {
+            color: var(--gemini-dark-blue);
+        }
 
         .hidden { display: none !important; }
     </style>
@@ -545,6 +553,17 @@
 
     <!-- Toast Container -->
     <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Modal -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="modalTitle">Details</h3>
+                <button class="modal-close" id="modalClose">×</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+        </div>
+    </div>
 
     <header>
         <div class="logo">
