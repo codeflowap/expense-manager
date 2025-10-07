@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import { prisma } from '../prisma';
 import { authMiddleware, AuthRequest } from '../middleware/auth.middleware';
 import { extractTextFromPDF } from '../services/pdf.service';
-import { analyzeExpenseStatement } from '../services/gemini.service';
+import { analyzeExpenseStatement, analyzeDailySpending } from '../services/gemini.service';
 import multer from 'multer';
 
 const router = Router();
@@ -37,15 +37,19 @@ router.post('/upload', authMiddleware, upload.single('file'), async (req: AuthRe
     // Extract text from PDF
     const pdfText = await extractTextFromPDF(pdfData);
 
-    // Analyze with Gemini
-    const analysisHtml = await analyzeExpenseStatement(pdfText);
+    // Analyze with Gemini in parallel - both calls happen simultaneously
+    const [analysisHtml, dailySpending] = await Promise.all([
+      analyzeExpenseStatement(pdfText),
+      analyzeDailySpending(pdfText)
+    ]);
 
     // Save analysis result and update document in a transaction
     await prisma.$transaction([
       prisma.analysisResult.create({
         data: {
           documentId: document.id,
-          llmResponseHtml: analysisHtml
+          llmResponseHtml: analysisHtml,
+          dailySpendingJson: JSON.stringify(dailySpending)
         }
       }),
       prisma.document.update({
@@ -60,7 +64,8 @@ router.post('/upload', authMiddleware, upload.single('file'), async (req: AuthRe
     res.status(200).json({
       message: 'Document processed successfully',
       documentId: document.id,
-      analysis: analysisHtml
+      analysis: analysisHtml,
+      dailySpending: dailySpending
     });
   } catch (error) {
     console.error('Upload error:', error);
@@ -143,15 +148,19 @@ router.post('/process-latest', authMiddleware, async (req: AuthRequest, res: Res
     // Extract text from PDF
     const pdfText = await extractTextFromPDF(Buffer.from(document.pdfData));
 
-    // Analyze with Gemini
-    const analysisHtml = await analyzeExpenseStatement(pdfText);
+    // Analyze with Gemini in parallel
+    const [analysisHtml, dailySpending] = await Promise.all([
+      analyzeExpenseStatement(pdfText),
+      analyzeDailySpending(pdfText)
+    ]);
 
     // Save analysis result and update document in a transaction
     await prisma.$transaction([
       prisma.analysisResult.create({
         data: {
           documentId: document.id,
-          llmResponseHtml: analysisHtml
+          llmResponseHtml: analysisHtml,
+          dailySpendingJson: JSON.stringify(dailySpending)
         }
       }),
       prisma.document.update({
@@ -166,7 +175,8 @@ router.post('/process-latest', authMiddleware, async (req: AuthRequest, res: Res
     res.status(200).json({
       message: 'Document processed successfully',
       documentId: document.id,
-      analysis: analysisHtml
+      analysis: analysisHtml,
+      dailySpending: dailySpending
     });
   } catch (error) {
     console.error('Process latest error:', error);
@@ -207,15 +217,19 @@ router.post('/process/:documentId', authMiddleware, async (req: AuthRequest, res
     // Extract text from PDF
     const pdfText = await extractTextFromPDF(Buffer.from(document.pdfData));
 
-    // Analyze with Gemini
-    const analysisHtml = await analyzeExpenseStatement(pdfText);
+    // Analyze with Gemini in parallel
+    const [analysisHtml, dailySpending] = await Promise.all([
+      analyzeExpenseStatement(pdfText),
+      analyzeDailySpending(pdfText)
+    ]);
 
     // Save analysis result and update document in a transaction
     await prisma.$transaction([
       prisma.analysisResult.create({
         data: {
           documentId: document.id,
-          llmResponseHtml: analysisHtml
+          llmResponseHtml: analysisHtml,
+          dailySpendingJson: JSON.stringify(dailySpending)
         }
       }),
       prisma.document.update({
@@ -230,7 +244,8 @@ router.post('/process/:documentId', authMiddleware, async (req: AuthRequest, res
     res.status(200).json({
       message: 'Document processed successfully',
       documentId: document.id,
-      analysis: analysisHtml
+      analysis: analysisHtml,
+      dailySpending: dailySpending
     });
   } catch (error) {
     console.error('Process document error:', error);
@@ -257,6 +272,7 @@ router.get('/result/:documentId', authMiddleware, async (req: AuthRequest, res: 
         analysisResult: {
           select: {
             llmResponseHtml: true,
+            dailySpendingJson: true,
             createdAt: true
           }
         }
@@ -282,6 +298,7 @@ router.get('/result/:documentId', authMiddleware, async (req: AuthRequest, res: 
       documentId,
       filename: document.filename,
       analysis: document.analysisResult.llmResponseHtml,
+      dailySpending: document.analysisResult.dailySpendingJson ? JSON.parse(document.analysisResult.dailySpendingJson) : [],
       analyzedAt: document.analysisResult.createdAt
     });
   } catch (error) {

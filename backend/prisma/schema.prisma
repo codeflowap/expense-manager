@@ -12,6 +12,7 @@ model User {
   id           String     @id @default(uuid()) @db.Uuid
   email        String     @unique @db.VarChar(255)
   passwordHash String     @map("password_hash") @db.VarChar(255)
+  avatarUrl    String?    @map("avatar_url") @db.Text
   createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamp(6)
   documents    Document[]
 
@@ -40,6 +41,7 @@ model AnalysisResult {
   id              String   @id @default(uuid()) @db.Uuid
   documentId      String   @unique @map("document_id") @db.Uuid
   llmResponseHtml String   @map("llm_response_html")
+  dailySpendingJson String? @map("daily_spending_json")
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamp(6)
   document        Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 

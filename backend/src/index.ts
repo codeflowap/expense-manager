@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import { initDatabase } from './prisma';
 import authRoutes from './routes/auth.routes';
 import documentRoutes from './routes/document.routes';
@@ -29,6 +30,24 @@ app.use('/api/webhook', webhookRoutes);
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Get list of images in public/images folder
+app.get('/api/images', (req, res) => {
+  const imagesPath = path.join(publicPath, 'images');
+
+  fs.readdir(imagesPath, (err, files) => {
+    if (err) {
+      return res.status(500).json({ error: 'Failed to read images directory' });
+    }
+
+    // Filter for image files
+    const imageFiles = files.filter(file =>
+      /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(file)
+    );
+
+    res.json({ images: imageFiles });
+  });
 });
 
 // Root endpoint - serve index.html

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart Expense Manager</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
 
@@ -79,7 +80,19 @@
         .notification-badge.active { display: flex; }
 
         .user-profile { display: flex; align-items: center; gap: 12px; }
-        .user-profile img { width: 40px; height: 40px; border-radius: 50%; }
+        .user-profile img {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.2s;
+            object-fit: cover;
+        }
+        .user-profile img:hover {
+            transform: scale(1.1);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+        #avatarInput { display: none; }
 
         /* Main content */
         main { width: 100%; max-width: 900px; margin: 40px auto; padding: 0 20px; }
@@ -129,6 +142,8 @@
         .btn-success { background-color: var(--gemini-teal); color: var(--gemini-white); }
         .btn-small { padding: 8px 16px; font-size: 0.9em; }
         .button-group { display: flex; gap: 15px; margin-top: 25px; }
+        /* Header-specific button alignment */
+        .header-right .btn { margin-top: 0; }
 
         /* Upload area */
         .upload-card { text-align: center; }
@@ -188,9 +203,16 @@
             padding: 12px;
             text-align: left;
             border-bottom: 1px solid var(--gemini-light-gray);
+            vertical-align: middle;
         }
         .inbox-table th { background-color: #f8f9fa; font-weight: 600; }
         .inbox-table tr:hover { background-color: #f8f9fa; }
+        .inbox-table th:nth-child(4), .inbox-table td:nth-child(4),
+        .inbox-table th:nth-child(5), .inbox-table td:nth-child(5) {
+            text-align: center;
+        }
+        /* Ensure action buttons align with status badges */
+        .inbox-table .btn { margin-top: 0; }
 
         .status-badge {
             padding: 4px 12px;
@@ -228,6 +250,39 @@
         .results-container ul { padding-left: 20px; }
         .results-container li { margin-bottom: 10px; }
 
+        /* Food Gallery */
+        .food-gallery-container {
+            margin-top: 40px;
+            background: var(--gemini-white);
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .food-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 30px;
+            align-items: center;
+            justify-items: center;
+        }
+
+        .food-item {
+            width: 150px;
+            height: 150px;
+            object-fit: contain;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+        }
+
+        .food-item:hover {
+            transform: scale(1.3);
+            filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.2));
+            z-index: 10;
+        }
+
         .hidden { display: none !important; }
     </style>
 </head>
@@ -251,9 +306,13 @@
             <div class="user-profile hidden" id="userProfile">
                 <img src="https://i.pravatar.cc/40" alt="User" id="userAvatar">
                 <span id="userName">User</span>
+                <button id="logoutBtn" class="btn btn-secondary" style="margin-left: 15px; padding: 8px 16px; font-size: 0.9em;">Logout</button>
             </div>
         </div>
     </header>
+
+    <!-- Hidden file input for avatar upload -->
+    <input type="file" id="avatarInput" accept="image/*">
 
     <main>
         <!-- Login Page -->
@@ -362,6 +421,13 @@
                 <input type="file" id="file-input" accept=".pdf">
                 <button class="btn btn-primary" id="submitBtn" disabled>Submit to Analyze</button>
             </section>
+
+            <!-- Food Gallery -->
+            <section class="food-gallery-container">
+                <div class="food-gallery" id="foodGallery">
+                    <!-- Images loaded dynamically -->
+                </div>
+            </section>
         </div>
 
         <!-- Loading Page -->
@@ -409,6 +475,10 @@
             </button>
             <div class="results-container" id="resultsContainer">
                 <!-- Populated by JavaScript -->
+            </div>
+            <div class="card" id="chartContainer" style="margin-top: 30px; display: none;">
+                <h2 style="margin-bottom: 20px;">Daily Spending Analysis</h2>
+                <canvas id="dailySpendingChart"></canvas>
             </div>
         </div>
 

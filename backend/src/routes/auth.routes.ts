@@ -33,7 +33,8 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
       },
       select: {
         id: true,
-        email: true
+        email: true,
+        avatarUrl: true
       }
     });
 
@@ -67,7 +68,8 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
       select: {
         id: true,
         email: true,
-        passwordHash: true
+        passwordHash: true,
+        avatarUrl: true
       }
     });
 
@@ -90,7 +92,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     res.status(200).json({
       message: 'Login successful',
       token,
-      user: { id: user.id, email: user.email }
+      user: { id: user.id, email: user.email, avatarUrl: user.avatarUrl }
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -136,6 +138,33 @@ router.post('/reset-password', async (req: Request, res: Response): Promise<void
     });
   } catch (error) {
     console.error('Reset password error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Update avatar endpoint
+router.post('/update-avatar', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email, avatarUrl } = req.body;
+
+    if (!email || !avatarUrl) {
+      res.status(400).json({ error: 'Email and avatar URL are required' });
+      return;
+    }
+
+    // Update user's avatar
+    const user = await prisma.user.update({
+      where: { email },
+      data: { avatarUrl },
+      select: { id: true, email: true, avatarUrl: true }
+    });
+
+    res.status(200).json({
+      message: 'Avatar updated successfully',
+      user
+    });
+  } catch (error) {
+    console.error('Update avatar error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

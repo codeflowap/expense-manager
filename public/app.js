@@ -71,6 +71,13 @@ function updateUIForAuth() {
         inboxIcon.classList.remove('hidden');
         userProfile.classList.remove('hidden');
         userName.textContent = currentUser.email.split('@')[0];
+        // Update avatar if user has custom avatar
+        const userAvatar = document.getElementById('userAvatar');
+        if (currentUser.avatarUrl) {
+            userAvatar.src = currentUser.avatarUrl;
+        } else {
+            userAvatar.src = 'https://i.pravatar.cc/40';
+        }
         startPolling();
     } else {
         showPage('login');
@@ -247,6 +254,12 @@ submitBtn.addEventListener('click', async () => {
 
         // Show result
         document.getElementById('resultsContainer').innerHTML = data.analysis;
+
+        // Render daily spending chart
+        if (data.dailySpending && data.dailySpending.length > 0) {
+            renderDailySpendingChart(data.dailySpending);
+        }
+
         showPage('result');
 
         // Reset upload form
@@ -277,6 +290,12 @@ document.getElementById('gmailFetchBtn').addEventListener('click', async () => {
 
         // Show result
         document.getElementById('resultsContainer').innerHTML = data.analysis;
+
+        // Render daily spending chart
+        if (data.dailySpending && data.dailySpending.length > 0) {
+            renderDailySpendingChart(data.dailySpending);
+        }
+
         showPage('result');
         updateInboxCount();
     } catch (error) {
@@ -305,7 +324,7 @@ async function loadInbox() {
 
         data.documents.forEach(doc => {
             const row = document.createElement('tr');
-            const date = new Date(doc.received_at).toLocaleString();
+            const date = new Date(doc.receivedAt).toLocaleString();
 
             row.innerHTML = `
                 <td>${doc.filename}</td>
@@ -340,6 +359,12 @@ window.processDocument = async function(docId) {
         });
 
         document.getElementById('resultsContainer').innerHTML = data.analysis;
+
+        // Render daily spending chart
+        if (data.dailySpending && data.dailySpending.length > 0) {
+            renderDailySpendingChart(data.dailySpending);
+        }
+
         showPage('result');
         updateInboxCount();
     } catch (error) {
@@ -354,6 +379,12 @@ window.viewResult = async function(docId) {
     try {
         const data = await apiCall(`/result/${docId}`);
         document.getElementById('resultsContainer').innerHTML = data.analysis;
+
+        // Render daily spending chart
+        if (data.dailySpending && data.dailySpending.length > 0) {
+            renderDailySpendingChart(data.dailySpending);
+        }
+
         showPage('result');
     } catch (error) {
         showError(error.message);
@@ -400,5 +431,245 @@ function stopPolling() {
     }
 }
 
+// Daily Spending Chart
+let dailySpendingChartInstance = null;
+
+function renderDailySpendingChart(dailySpending) {
+    const chartContainer = document.getElementById('chartContainer');
+    const canvas = document.getElementById('dailySpendingChart');
+
+    // Show chart container
+    chartContainer.style.display = 'block';
+
+    // Destroy previous chart instance if exists
+    if (dailySpendingChartInstance) {
+        dailySpendingChartInstance.destroy();
+    }
+
+    // Prepare data
+    const days = dailySpending.map(d => d.day);
+    const amounts = dailySpending.map(d => d.amount);
+
+    // Create gradient
+    const ctx = canvas.getContext('2d');
+    const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+    gradient.addColorStop(0, '#4285F4');
+    gradient.addColorStop(0.5, '#34A853');
+    gradient.addColorStop(1, '#FBBC04');
+
+    // Create chart
+    dailySpendingChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: days,
+            datasets: [{
+                label: 'Daily Spending ($)',
+                data: amounts,
+                backgroundColor: gradient,
+                borderColor: '#4285F4',
+                borderWidth: 2,
+                borderRadius: 8,
+                barThickness: 'flex',
+                maxBarThickness: 40
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            aspectRatio: 2.5,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                    labels: {
+                        font: {
+                            family: 'Poppins',
+                            size: 14,
+                            weight: '500'
+                        },
+                        color: '#131314',
+                        padding: 20
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(19, 19, 20, 0.9)',
+                    titleFont: {
+                        family: 'Poppins',
+                        size: 14,
+                        weight: '600'
+                    },
+                    bodyFont: {
+                        family: 'Poppins',
+                        size: 13
+                    },
+                    padding: 12,
+                    cornerRadius: 8,
+                    callbacks: {
+                        label: function(context) {
+                            return 'Spending: $' + context.parsed.y.toFixed(2);
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: {
+                        display: false
+                    },
+                    ticks: {
+                        font: {
+                            family: 'Poppins',
+                            size: 12
+                        },
+                        color: '#5F6368'
+                    },
+                    title: {
+                        display: true,
+                        text: 'Day of Month',
+                        font: {
+                            family: 'Poppins',
+                            size: 14,
+                            weight: '600'
+                        },
+                        color: '#131314',
+                        padding: 10
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: '#E8EAED',
+                        lineWidth: 1
+                    },
+                    ticks: {
+                        font: {
+                            family: 'Poppins',
+                            size: 12
+                        },
+                        color: '#5F6368',
+                        callback: function(value) {
+                            return '$' + value.toFixed(0);
+                        }
+                    },
+                    title: {
+                        display: true,
+                        text: 'Spending Amount ($)',
+                        font: {
+                            family: 'Poppins',
+                            size: 14,
+                            weight: '600'
+                        },
+                        color: '#131314',
+                        padding: 10
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Avatar Upload Functionality
+const avatarInput = document.getElementById('avatarInput');
+const userAvatar = document.getElementById('userAvatar');
+
+// Click avatar to trigger file input
+userAvatar.addEventListener('click', () => {
+    if (authToken && currentUser) {
+        avatarInput.click();
+    }
+});
+
+// Handle avatar file selection
+avatarInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+        showError('Please select an image file');
+        return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+        showError('Image size must be less than 5MB');
+        return;
+    }
+
+    try {
+        // Convert to base64/data URL
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            const avatarUrl = event.target.result;
+
+            // Update avatar via API
+            const data = await apiCall('/auth/update-avatar', {
+                method: 'POST',
+                body: JSON.stringify({
+                    email: currentUser.email,
+                    avatarUrl: avatarUrl
+                })
+            });
+
+            // Update local state
+            currentUser.avatarUrl = avatarUrl;
+            localStorage.setItem('currentUser', JSON.stringify(currentUser));
+
+            // Update displayed avatar
+            userAvatar.src = avatarUrl;
+            showSuccess('Avatar updated successfully!');
+        };
+        reader.readAsDataURL(file);
+    } catch (error) {
+        showError('Failed to update avatar: ' + error.message);
+    }
+
+    // Clear file input
+    avatarInput.value = '';
+});
+
+// Logout
+document.getElementById('logoutBtn').addEventListener('click', () => {
+    // Clear authentication data
+    authToken = null;
+    currentUser = null;
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('currentUser');
+
+    // Update UI
+    updateUIForAuth();
+
+    showSuccess('Logged out successfully!');
+});
+
+// Load Food Gallery Images
+async function loadFoodGallery() {
+    try {
+        const response = await fetch('/api/images');
+        const data = await response.json();
+
+        if (!data.images || data.images.length === 0) {
+            return;
+        }
+
+        const gallery = document.getElementById('foodGallery');
+        gallery.innerHTML = '';
+
+        // Shuffle images for random distribution
+        const shuffledImages = data.images.sort(() => Math.random() - 0.5);
+
+        shuffledImages.forEach(filename => {
+            const img = document.createElement('img');
+            img.src = `images/${filename}`;
+            img.alt = filename.replace(/\.[^/.]+$/, ''); // Remove extension for alt text
+            img.className = 'food-item';
+            gallery.appendChild(img);
+        });
+    } catch (error) {
+        console.error('Failed to load food gallery:', error);
+    }
+}
+
 // Initialize
 updateUIForAuth();
+loadFoodGallery();
