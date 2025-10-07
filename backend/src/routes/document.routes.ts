@@ -307,4 +307,77 @@ router.get('/result/:documentId', authMiddleware, async (req: AuthRequest, res: 
   }
 });
 
+// Download document PDF
+router.get('/document/:documentId/download', authMiddleware, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user!.userId;
+    const { documentId } = req.params;
+
+    // Verify document belongs to user
+    const document = await prisma.document.findFirst({
+      where: {
+        id: documentId,
+        userId
+      },
+      select: {
+        filename: true,
+        pdfData: true
+      }
+    });
+
+    if (!document) {
+      res.status(404).json({ error: 'Document not found' });
+      return;
+    }
+
+    // Set headers for PDF download
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${document.filename}"`);
+
+    // Send PDF buffer
+    const pdfBuffer = Buffer.isBuffer(document.pdfData) ? document.pdfData : Buffer.from(document.pdfData);
+    res.send(pdfBuffer);
+  } catch (error) {
+    console.error('Download document error:', error);
+    res.status(500).json({ error: 'Failed to download document' });
+  }
+});
+
+// Delete document
+router.delete('/document/:documentId', authMiddleware, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user!.userId;
+    const { documentId } = req.params;
+
+    // Verify document belongs to user
+    const document = await prisma.document.findFirst({
+      where: {
+        id: documentId,
+        userId
+      },
+      select: {
+        id: true
+      }
+    });
+
+    if (!document) {
+      res.status(404).json({ error: 'Document not found' });
+      return;
+    }
+
+    // Delete document (cascade will handle analysisResult deletion)
+    await prisma.document.delete({
+      where: { id: documentId }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Document deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete document error:', error);
+    res.status(500).json({ error: 'Failed to delete document' });
+  }
+});
+
 export default router;

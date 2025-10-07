@@ -158,7 +158,7 @@
         }
 
         /* Main content */
-        main { width: 100%; max-width: 900px; margin: 40px auto; padding: 0 20px; }
+        main { width: 100%; max-width: 1400px; margin: 40px auto; padding: 0 20px; }
 
         .page { display: none; }
         .page.active { display: block; }
@@ -203,7 +203,9 @@
         .btn-primary { background-color: var(--gemini-blue); color: var(--gemini-white); }
         .btn-secondary { background-color: var(--gemini-light-gray); color: var(--gemini-dark-blue); }
         .btn-success { background-color: var(--gemini-teal); color: var(--gemini-white); }
-        .btn-small { padding: 8px 16px; font-size: 0.9em; }
+        .btn-small { padding: 6px 10px; font-size: 0.75em; white-space: nowrap; }
+        .btn-download { background-color: #5F6368; color: white; }
+        .btn-download:hover { background-color: #4A4D52; }
         .button-group { display: flex; gap: 15px; margin-top: 25px; }
         /* Header-specific button alignment */
         .header-right .btn { margin-top: 0; }
@@ -308,9 +310,15 @@
             color: var(--gemini-gray);
         }
         .inbox-table th:nth-child(4), .inbox-table td:nth-child(4),
-        .inbox-table th:nth-child(5), .inbox-table td:nth-child(5) {
+        .inbox-table th:nth-child(5), .inbox-table td:nth-child(5),
+        .inbox-table th:nth-child(6), .inbox-table td:nth-child(6),
+        .inbox-table th:nth-child(7), .inbox-table td:nth-child(7) {
             text-align: center;
         }
+        /* Column widths for better layout */
+        .inbox-table th:nth-child(5), .inbox-table td:nth-child(5) { width: 120px; }
+        .inbox-table th:nth-child(6), .inbox-table td:nth-child(6) { width: 110px; }
+        .inbox-table th:nth-child(7), .inbox-table td:nth-child(7) { width: 90px; }
         /* Ensure action buttons align with status badges */
         .inbox-table .btn { margin-top: 0; }
 
@@ -803,6 +811,8 @@
                             <th>Source</th>
                             <th>Status</th>
                             <th>Action</th>
+                            <th>Download</th>
+                            <th>Delete</th>
                         </tr>
                     </thead>
                     <tbody id="inboxTableBody">

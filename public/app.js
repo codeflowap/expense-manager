@@ -797,7 +797,7 @@ async function loadInbox() {
         tbody.innerHTML = '';
 
         if (data.documents.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--gemini-gray);">No documents found</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--gemini-gray);">No documents found</td></tr>';
             return;
         }
 
@@ -819,6 +819,12 @@ async function loadInbox() {
                         ? `<button class="btn btn-success btn-small" onclick="viewResult('${doc.id}')">Check Result</button>`
                         : `<button class="btn btn-primary btn-small" onclick="processDocument('${doc.id}')">Process</button>`
                     }
+                </td>
+                <td>
+                    <button class="btn btn-download btn-small" onclick="downloadDocument('${doc.id}', '${doc.filename}')">Download File</button>
+                </td>
+                <td>
+                    <button class="btn btn-danger btn-small" onclick="deleteDocument('${doc.id}')" style="background-color: #EA4335;">Delete</button>
                 </td>
             `;
 
@@ -872,6 +878,62 @@ window.viewResult = async function(docId) {
     } catch (error) {
         showError(error.message);
         showPage('inbox');
+    }
+};
+
+window.downloadDocument = async function(docId, filename) {
+    try {
+        // Create a download link
+        const response = await fetch(`${API_URL}/document/${docId}/download`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to download document');
+        }
+
+        // Get the PDF as blob
+        const blob = await response.blob();
+
+        // Create download link and trigger download
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+        showSuccess('Document downloaded successfully');
+    } catch (error) {
+        showError('Failed to download document: ' + error.message);
+    }
+};
+
+window.deleteDocument = async function(docId) {
+    // Confirm deletion
+    if (!confirm('Are you sure you want to delete this document? This action cannot be undone.')) {
+        return;
+    }
+
+    try {
+        await apiCall(`/document/${docId}`, {
+            method: 'DELETE'
+        });
+
+        showSuccess('Document deleted successfully');
+
+        // Reload inbox to refresh the list
+        await loadInbox();
+
+        // Update notification count
+        updateInboxCount();
+    } catch (error) {
+        showError('Failed to delete document: ' + error.message);
     }
 };
 
