@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../prisma';
-import { convertBase64ToPDF } from '../services/pdf.service';
+import { convertBase64ToPDF, extractTextFromPDF } from '../services/pdf.service';
 
 const router = Router();
 
@@ -27,6 +27,15 @@ router.post('/pipedream', async (req: Request, res: Response): Promise<void> => 
 
     // Convert base64 to buffer
     const pdfBuffer = convertBase64ToPDF(pdf_base64);
+
+    // Validate PDF by trying to extract text
+    try {
+      await extractTextFromPDF(pdfBuffer);
+    } catch (error) {
+      console.error('Invalid PDF received from Pipedream:', error);
+      res.status(400).json({ error: 'Invalid PDF file - could not parse PDF data' });
+      return;
+    }
 
     // Save document to database
     const document = await prisma.document.create({

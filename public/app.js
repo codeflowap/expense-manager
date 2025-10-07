@@ -517,6 +517,12 @@ async function apiCall(endpoint, options = {}) {
 
 // Authentication
 function updateUIForAuth() {
+    // Clear banks table when switching users or logging in/out
+    const banksTableContainer = document.getElementById('banksTableContainer');
+    if (banksTableContainer) {
+        banksTableContainer.style.display = 'none';
+    }
+
     if (authToken && currentUser) {
         showPage('dashboard');
         inboxIcon.classList.remove('hidden');
@@ -739,30 +745,41 @@ function resetUploadForm() {
     submitBtn.disabled = true;
 }
 
-// Gmail Fetch Button
+// Find Financial Institutions Button
 document.getElementById('gmailFetchBtn').addEventListener('click', async () => {
-    setLoadingMessage('analysis');
-    showPage('loading');
+    // Check if user has address
+    if (!currentUser || !currentUser.address) {
+        showError('Please update your address in your profile before searching for banks');
+        // Open profile dropdown
+        document.getElementById('profileDropdown').classList.add('show');
+        return;
+    }
+
+    const banksTableContainer = document.getElementById('banksTableContainer');
+    const banksTableContent = document.getElementById('banksTableContent');
+
+    // Show loading state
+    banksTableContainer.style.display = 'block';
+    banksTableContent.innerHTML = `
+        <div class="loading-container" style="padding: 30px 10px;">
+            <div class="spinner large-spinner"></div>
+            <p>Searching for financial institutions near you...</p>
+        </div>
+    `;
 
     try {
-        const data = await apiCall('/process-latest', {
-            method: 'POST'
+        const data = await apiCall('/banks/search', {
+            method: 'POST',
+            body: JSON.stringify({
+                address: currentUser.address
+            })
         });
 
-        // Show result
-        document.getElementById('resultsContainer').innerHTML = data.analysis;
-        window.lastAnalysisHtml = data.analysis;
-
-        // Render daily spending chart
-        if (data.dailySpending && data.dailySpending.length > 0) {
-            renderDailySpendingChart(data.dailySpending);
-        }
-
-        showPage('result');
-        updateInboxCount();
+        displayBanksTable(data.banks);
+        showSuccess(`Found ${data.count} financial institutions near you`);
     } catch (error) {
         showError(error.message);
-        showPage('dashboard');
+        banksTableContainer.style.display = 'none';
     }
 });
 
@@ -1982,6 +1999,84 @@ async function geocodeAddressLeaflet(address) {
         console.error('Geocoding error:', err);
         return null;
     }
+}
+
+// Display Banks Table
+function displayBanksTable(banks) {
+    const banksTableContent = document.getElementById('banksTableContent');
+
+    if (!banks || banks.length === 0) {
+        banksTableContent.innerHTML = '<p style="color: var(--gemini-gray);">No financial institutions found nearby.</p>';
+        return;
+    }
+
+    const createStarRating = (rating) => {
+        const fullStars = Math.floor(rating);
+        const emptyStars = 5 - fullStars;
+        let stars = '<span style="color: #FBBC04; letter-spacing: 2px;">';
+        stars += '★'.repeat(fullStars);
+        stars += '</span>';
+        stars += '<span style="color: #E0E0E0; letter-spacing: 2px;">';
+        stars += '★'.repeat(emptyStars);
+        stars += '</span>';
+        return stars;
+    };
+
+    let tableHTML = `
+        <table class="inbox-table" style="width: 100%;">
+            <thead>
+                <tr>
+                    <th>Bank Name</th>
+                    <th>Address</th>
+                    <th>Phone</th>
+                    <th>Rating</th>
+                    <th>Working Hours</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    banks.forEach(bank => {
+        // Get today's working hours
+        let todayHours = 'N/A';
+        if (bank.workingHours && bank.workingHours.length > 0) {
+            const today = new Date().getDay(); // 0 = Sunday, 1 = Monday, etc.
+            const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+            // Google Places returns weekday_text in order: Monday, Tuesday, ..., Sunday
+            // So we need to map our day index to the array index
+            const googleDayIndex = today === 0 ? 6 : today - 1; // Convert Sunday from 0 to 6, others subtract 1
+
+            if (bank.workingHours[googleDayIndex]) {
+                todayHours = bank.workingHours[googleDayIndex];
+            } else {
+                // Fallback: try to find today's hours by matching day name
+                const todayName = dayNames[today];
+                const found = bank.workingHours.find(h => h.startsWith(todayName));
+                todayHours = found || 'N/A';
+            }
+        }
+
+        tableHTML += `
+            <tr>
+                <td><strong>${escapeHtml(bank.name)}</strong></td>
+                <td>${escapeHtml(bank.address)}</td>
+                <td>${escapeHtml(bank.phone)}</td>
+                <td>
+                    ${createStarRating(bank.rating)}
+                    <div style="font-size: 12px; color: #5F6368; margin-top: 4px;">${bank.rating.toFixed(1)}</div>
+                </td>
+                <td style="font-size: 12px; line-height: 1.6;">${escapeHtml(todayHours)}</td>
+            </tr>
+        `;
+    });
+
+    tableHTML += `
+            </tbody>
+        </table>
+    `;
+
+    banksTableContent.innerHTML = tableHTML;
 }
 
 // Calculate distance between two lat/lng points (in km)
